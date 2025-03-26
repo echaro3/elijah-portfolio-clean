@@ -8,7 +8,7 @@ export default function ElijahCharoPortfolio() {
         <p className="text-gray-400">Data & Automation Specialist | SharePoint | Power BI | TS Clearance</p>
         <div className="mt-2 flex gap-4">
           <a href="https://www.linkedin.com/in/elijah-charo-255889207" target="_blank" className="text-blue-400 hover:underline">LinkedIn</a>
-          <a href="#" className="text-blue-400 hover:underline">Download Resume</a>
+          <a href="/elijah-charo-resume.pdf" target="_blank" rel="noopener noreferrer" download>Download Resume</a>
         </div>
       </header>
 
