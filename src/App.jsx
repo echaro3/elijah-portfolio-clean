@@ -60,6 +60,11 @@ export default function ElijahCharoPortfolio() {
           <li><a href="mailto:elijahcharo285@gmail.com" className="hover:underline">elijahcharo285@gmail.com</a></li>
         </ul>
       </section>
+
+      <footer className="p-4 text-center text-sm text-gray-400 dark:text-gray-500">
+  © {new Date().getFullYear()} Elijah Charo. Built with React, Vite & Tailwind CSS.
+      </footer>
+
     </main>
   );
 }
