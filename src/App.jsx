@@ -51,8 +51,8 @@ export default function ElijahCharoPortfolio() {
             <p className="text-gray-800 dark:text-gray-300 max-w-3xl">Workflow automation examples using Power Automate and SharePoint Designer to route documents, send notifications, and manage task lifecycles.</p>
           </div>
           <div>
-            <h3 className="text-xl font-semibold">🛡 FOIA Tracker (Coming Soon)</h3>
-            <p className="text-gray-800 dark:text-gray-300 max-w-3xl">A dashboard for monitoring FOIA requests, response times, and compliance metrics across an organization.</p>
+            <h3 className="text-xl font-semibold">🛡 Knowledge Practices / FOIA / Records Management and Sharedrive access</h3>
+            <p className="text-gray-800 dark:text-gray-300 max-w-3xl">Experienced Knowledge Management practices and FOIA/508 Compliance Documentation</p>
           </div>
         </div>
       </section>
