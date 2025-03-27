@@ -2,7 +2,21 @@ import React from "react";
 
 export default function ElijahCharoPortfolio() {
   return (
-<main className="transition-colors duration-300 bg-white text-black dark:bg-gray-950 dark:text-white min-h-screen font-sans">
+<>
+  <div className="relative w-full h-40 overflow-hidden">
+  <video
+    autoPlay
+    muted
+    loop
+    playsInline
+    className="w-full h-full object-cover"
+  >
+    <source src="/futuristic-banner.mp4" type="video/mp4" />
+    Your browser does not support the video tag.
+  </video>
+</div>
+
+ <main className="transition-colors duration-300 bg-white text-black dark:bg-gray-950 dark:text-white min-h-screen font-sans">
       <header className="p-6 border-b border-gray-800">
         <h1 className="text-3xl font-bold">Elijah Charo</h1>
         <p className="text-gray-800 dark:text-gray-300 max-w-3xl">Data & Automation Specialist | SharePoint | Power BI | TS Clearance</p>
@@ -66,5 +80,6 @@ export default function ElijahCharoPortfolio() {
       </footer>
 
     </main>
+  </>
   );
 }
