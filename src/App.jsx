@@ -17,19 +17,22 @@ export default function ElijahCharoPortfolio() {
 </div>
 
  <main className="transition-colors duration-300 bg-white text-black dark:bg-gray-950 dark:text-white min-h-screen font-sans">
-      <header className="p-6 border-b border-gray-800">
-        <h1 className="text-3xl font-bold">Elijah Charo</h1>
-        <p className="text-gray-800 dark:text-gray-300 max-w-3xl">Data & Automation Specialist | SharePoint | Power BI | TS Clearance</p>
-        <div className="mt-2 flex gap-4">
-          <a href="https://www.linkedin.com/in/elijah-charo-255889207" target="_blank" className="text-blue-400 hover:underline">LinkedIn</a>
-          <a href="/elijah-charo-resume.pdf" target="_blank" rel="noopener noreferrer" download className="text-blue-400 hover:underline">Download Resume</a>
-    	<button
-  onClick={() => document.documentElement.classList.toggle('dark')}
-  className="ml-4 px-3 py-1 text-sm bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded"
->Toggle Theme
-       	</button>
-        </div>
-      </header>
+<header className="sticky top-0 z-50 bg-gray-950 dark:bg-gray-950 border-b border-gray-800">
+  <div className="p-6">
+    <h1 className="text-3xl font-bold">Elijah Charo</h1>
+    <p className="text-gray-400">Data & Automation Specialist | SharePoint | Power BI | TS Clearance</p>
+    <div className="mt-2 flex gap-4">
+      <a href="https://www.linkedin.com/in/elijah-charo-255889207" target="_blank" className="text-blue-400 hover:underline">LinkedIn</a>
+      <a href="/elijah-charo-resume.pdf" target="_blank" rel="noopener noreferrer" download>Download Resume</a>
+      <button
+        onClick={() => document.documentElement.classList.toggle('dark')}
+        className="ml-4 px-3 py-1 text-sm bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded"
+      >
+        Toggle Theme
+      </button>
+    </div>
+  </div>
+</header>
 
       <section className="p-6 border-b border-gray-800">
         <h2 className="text-2xl font-semibold mb-2">About Me</h2>
