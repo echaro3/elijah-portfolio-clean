@@ -39,7 +39,7 @@ export default function ElijahCharoPortfolio() {
 
       <main className="transition-colors duration-300 bg-white text-black dark:bg-gray-950 dark:text-white min-h-screen font-sans">
         {/* Centered Header */}
-        <header className="sticky top-0 z-50 bg-white dark:bg-gray-950 border-b border-gray-800 text-center">
+        <header className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 text-center">
           <div className="p-6 flex flex-col items-center">
             <h1 className="text-3xl font-bold text-black dark:text-white">Elijah Charo</h1>
             <p className="text-gray-400 dark:text-gray-300 mt-1">
@@ -90,19 +90,37 @@ export default function ElijahCharoPortfolio() {
           <div className="grid md:grid-cols-3 gap-6">
             <button
               onClick={() => setActiveProject("tasker")}
-              className="bg-gray-100 dark:bg-gray-900 p-6 rounded-xl hover:shadow-[0_0_12px_rgba(0,153,255,0.3)] dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] transition"
+              className="
+                bg-white border border-gray-200 dark:bg-gray-900 dark:border-transparent
+                p-6 rounded-xl
+                hover:shadow-[0_0_15px_rgba(0,153,255,0.5)] 
+                dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] 
+                transition
+              "
             >
               Tasker Ops Dashboard
             </button>
             <button
               onClick={() => setActiveProject("sharepoint")}
-              className="bg-gray-100 dark:bg-gray-900 p-6 rounded-xl hover:shadow-[0_0_12px_rgba(0,153,255,0.3)] dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] transition"
+              className="
+                bg-white border border-gray-200 dark:bg-gray-900 dark:border-transparent
+                p-6 rounded-xl
+                hover:shadow-[0_0_15px_rgba(0,153,255,0.5)] 
+                dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] 
+                transition
+              "
             >
               SharePoint Automation
             </button>
             <button
               onClick={() => setActiveProject("knowledge")}
-              className="bg-gray-100 dark:bg-gray-900 p-6 rounded-xl hover:shadow-[0_0_12px_rgba(0,153,255,0.3)] dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] transition"
+              className="
+                bg-white border border-gray-200 dark:bg-gray-900 dark:border-transparent
+                p-6 rounded-xl
+                hover:shadow-[0_0_15px_rgba(0,153,255,0.5)] 
+                dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] 
+                transition
+              "
             >
               Knowledge & Records
             </button>
@@ -110,7 +128,7 @@ export default function ElijahCharoPortfolio() {
 
           {/* Dynamic project description */}
           {activeProject && (
-            <div className="mt-6 bg-white/5 dark:bg-white/5 backdrop-blur-md p-6 border border-blue-500 rounded-lg transition-all">
+            <div className="mt-6 bg-white/70 dark:bg-white/5 backdrop-blur-md p-6 border border-blue-500 rounded-lg transition-all">
               <h3 className="text-xl font-bold text-blue-400 mb-2">
                 {projectDescriptions[activeProject].title}
               </h3>
