@@ -23,7 +23,7 @@ export default function ElijahCharoPortfolio() {
 
   return (
     <>
-      {/* Video banner */}
+      {/* Video banner with enhanced fade overlay */}
       <div className="relative w-full h-40 overflow-hidden">
         <video
           autoPlay
@@ -35,6 +35,7 @@ export default function ElijahCharoPortfolio() {
           <source src="/futuristic-banner.mp4" type="video/mp4" />
           Your browser does not support the video tag.
         </video>
+        <div className="absolute bottom-0 w-full h-24 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none"></div>
       </div>
 
       <main className="transition-colors duration-300 bg-white text-black dark:bg-gray-950 dark:text-white min-h-screen font-sans">
