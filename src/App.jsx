@@ -56,10 +56,9 @@ export default function ElijahCharoPortfolio() {
                 LinkedIn
               </a>
               <a
-                href="/elijah-charo-resume.pdf"
+                href="/ElijahCharo_Data_Engineering_Resume.pdf"
                 target="_blank"
                 rel="noopener noreferrer"
-                download
                 className="text-blue-400 hover:underline"
               >
                 Download Resume
