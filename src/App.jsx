@@ -45,8 +45,8 @@ export default function ElijahCharoPortfolio() {
             <img
               src="/elijah-charo-power-bi-sharepoint-automation-specialist-san-antonio.jpg"
               alt="Elijah Charo - Power BI, SharePoint, and Automation Specialist in San Antonio"
-              width="160"
-              height="160"
+              width="144"
+              height="144"
               loading="eager"
               className="w-32 h-32 md:w-36 md:h-36 rounded-full object-cover object-top border-2 border-blue-400 shadow-[0_0_20px_rgba(96,165,250,0.35)] mb-5 bg-gray-900"
             />
