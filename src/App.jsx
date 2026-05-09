@@ -1,195 +1,341 @@
 import React, { useState } from "react";
 
-export default function ElijahCharoPortfolio() {
-  const [activeProject, setActiveProject] = useState(null);
+const projects = {
+  tasker: {
+    title: "Tasker Operations Dashboard",
+    tag: "Power BI / SharePoint",
+    description:
+      "Interactive reporting for task status, suspense tracking, overdue items, and leadership visibility.",
+    impact:
+      "Designed to replace scattered manual tracking with centralized performance insights and operational decision support."
+  },
+  sharepoint: {
+    title: "SharePoint Automation Suite",
+    tag: "Power Automate / M365",
+    description:
+      "Workflow automation patterns for routing documents, sending notifications, managing approvals, and tracking lifecycle status.",
+    impact:
+      "Reduces repetitive admin work while preserving accountability, visibility, and process consistency."
+  },
+  knowledge: {
+    title: "Knowledge & Records Management",
+    tag: "KM / Governance",
+    description:
+      "Experience supporting knowledge management, records practices, FOIA/508 documentation, and shared-drive governance.",
+    impact:
+      "Bridges operational requirements with clean digital structure, documentation, and compliance-minded processes."
+  }
+};
 
-  const projectDescriptions = {
-    tasker: {
-      title: "Tasker Ops Dashboard (Power BI)",
-      content:
-        "An interactive Power BI dashboard that tracks task status, priorities, and overdue metrics. Built using mock SharePoint task data with slicers, visuals, and KPIs."
-    },
-    sharepoint: {
-      title: "SharePoint Automation Suite",
-      content:
-        "Workflow automation examples using Power Automate and SharePoint Designer to route documents, send notifications, and manage task lifecycles."
-    },
-    knowledge: {
-      title: "Knowledge Practices / FOIA / Records Management",
-      content:
-        "Experienced in Knowledge Management practices, FOIA/508 compliance documentation, and shared-drive governance."
-    }
-  };
+const skills = [
+  "Power BI",
+  "SharePoint",
+  "Power Automate",
+  "Microsoft 365",
+  "Workflow Automation",
+  "Data Operations",
+  "Dashboards",
+  "Process Improvement"
+];
+
+const services = [
+  {
+    title: "Power BI Dashboards",
+    text: "Leadership-ready dashboards that turn scattered data into clear metrics, trends, and decisions."
+  },
+  {
+    title: "SharePoint Systems",
+    text: "Structured lists, libraries, permissions, forms, and workflows built around real business processes."
+  },
+  {
+    title: "Automation Workflows",
+    text: "Power Automate flows that reduce manual routing, reminders, status updates, and repetitive admin work."
+  },
+  {
+    title: "Operations Modernization",
+    text: "Practical digital solutions for teams still relying on email threads, spreadsheets, and manual trackers."
+  }
+];
+
+export default function ElijahCharoPortfolio() {
+  const [activeProject, setActiveProject] = useState("tasker");
 
   return (
-    <>
-      {/* Video banner with enhanced fade overlay */}
-      <div className="relative w-full h-40 overflow-hidden">
-        <video
-          autoPlay
-          muted
-          loop
-          playsInline
-          className="w-full h-full object-cover"
-        >
-          <source src="/futuristic-banner.mp4" type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
-        <div className="absolute bottom-0 w-full h-24 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none"></div>
-      </div>
+    <main className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden">
+      <section className="relative min-h-screen flex items-center justify-center px-6 py-20">
+        <div className="absolute inset-x-0 top-0 h-[520px] overflow-hidden">
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="h-full w-full object-cover opacity-45 scale-105"
+          >
+            <source src="/futuristic-banner.mp4" type="video/mp4" />
+          </video>
 
-      <main className="transition-colors duration-300 bg-white text-black dark:bg-gray-950 dark:text-white min-h-screen font-sans">
-        {/* Centered Header */}
-        <header className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 text-center">
-          <div className="p-6 flex flex-col items-center">
-            <img
-              src="/elijah-charo-power-bi-sharepoint-automation-specialist-san-antonio.jpg"
-              alt="Elijah Charo - Power BI, SharePoint, and Automation Specialist in San Antonio"
-              width="96"
-              height="96"
-              loading="eager"
-              className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover object-top border-2 border-blue-400 shadow-[0_0_14px_rgba(96,165,250,0.35)] mb-4 bg-gray-900"
-            />
-            <h1 className="text-3xl font-bold text-black dark:text-white">Elijah Charo</h1>
-            <p className="text-gray-400 dark:text-gray-300 mt-1">
-              Data & Automation Specialist | SharePoint | Power BI | TS Clearance
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/20 via-slate-950/70 to-slate-950" />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-transparent to-slate-950/80" />
+        </div>
+
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.30),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_35%)]" />
+
+        <div className="relative z-10 max-w-6xl w-full grid lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
+          <section className="rounded-[2rem] border border-white/10 bg-slate-950/55 p-6 md:p-10 backdrop-blur-xl shadow-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-2 text-sm text-blue-200 mb-6">
+              <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+              San Antonio · Microsoft 365 · Data Automation
+            </div>
+
+            <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-tight">
+              I build systems that turn
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-200 to-blue-500">
+                manual work into momentum.
+              </span>
+            </h1>
+
+            <p className="mt-6 text-lg md:text-xl text-slate-300 max-w-2xl leading-relaxed">
+              I’m Elijah Charo — a Data & Automation Specialist focused on
+              Power BI dashboards, SharePoint systems, Power Automate workflows,
+              and Microsoft 365 solutions that help teams work faster and make
+              better decisions.
             </p>
-            <div className="mt-3 flex flex-wrap justify-center gap-4">
+
+            <div className="mt-8 flex flex-wrap gap-4">
               <a
-                href="https://www.linkedin.com/in/elijah-charo-255889207"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
+                href="mailto:elijahcharo285@gmail.com"
+                className="rounded-full bg-blue-500 px-6 py-3 font-semibold text-white shadow-[0_0_30px_rgba(59,130,246,0.35)] hover:bg-blue-400 transition"
               >
-                LinkedIn
+                Let’s Build Something
               </a>
               <a
                 href="/ElijahCharo_Data_Engineering_Resume.pdf"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
+                className="rounded-full border border-slate-600 px-6 py-3 font-semibold text-slate-100 hover:border-blue-400 hover:text-blue-300 transition"
               >
                 Download Resume
               </a>
-              <button
-                onClick={() => document.documentElement.classList.toggle("dark")}
-                className="px-3 py-1 text-sm bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded hover:ring hover:ring-blue-400"
+            </div>
+
+            <div className="mt-10 grid grid-cols-3 gap-4 max-w-xl">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-3xl font-bold text-blue-300">40K+</p>
+                <p className="text-sm text-slate-400">Personnel-supported environment</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-3xl font-bold text-blue-300">TS</p>
+                <p className="text-sm text-slate-400">Active clearance</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-3xl font-bold text-blue-300">M365</p>
+                <p className="text-sm text-slate-400">Automation ecosystem</p>
+              </div>
+            </div>
+          </section>
+
+          <aside className="relative">
+            <div className="absolute -inset-4 rounded-[2rem] bg-blue-500/20 blur-3xl" />
+            <div className="relative rounded-[2rem] border border-white/10 bg-slate-950/70 p-8 backdrop-blur-xl shadow-2xl">
+              <div className="flex flex-col items-center text-center">
+                <img
+                  src="/elijah-charo-power-bi-sharepoint-automation-specialist-san-antonio.jpg"
+                  alt="Elijah Charo - Power BI, SharePoint, and Automation Specialist in San Antonio"
+                  width="112"
+                  height="112"
+                  loading="eager"
+                  className="h-24 w-24 rounded-full object-cover object-top border-2 border-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.40)]"
+                />
+                <h2 className="mt-5 text-3xl font-bold">Elijah Charo</h2>
+                <p className="mt-2 text-blue-200">Data & Automation Specialist</p>
+                <p className="mt-4 text-sm text-slate-400 leading-relaxed">
+                  Power BI · SharePoint · Power Automate · Microsoft 365 ·
+                  Knowledge Management · Operations Modernization
+                </p>
+              </div>
+
+              <div className="mt-8 grid grid-cols-2 gap-3">
+                {skills.map((skill) => (
+                  <div
+                    key={skill}
+                    className="rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-200"
+                  >
+                    {skill}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section className="px-6 py-20 bg-slate-950">
+        <div className="max-w-6xl mx-auto">
+          <div className="max-w-3xl">
+            <p className="text-blue-300 font-semibold">What I Build</p>
+            <h2 className="mt-3 text-4xl md:text-5xl font-black tracking-tight">
+              Digital solutions for teams buried in manual processes.
+            </h2>
+            <p className="mt-5 text-slate-400 text-lg leading-relaxed">
+              My focus is simple: replace scattered spreadsheets, inbox chaos,
+              and repetitive status tracking with clean Microsoft-based systems
+              that are easier to manage and easier to measure.
+            </p>
+          </div>
+
+          <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {services.map((service) => (
+              <article
+                key={service.title}
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 hover:border-blue-400/50 hover:bg-blue-400/[0.04] transition"
               >
-                Toggle Theme
-              </button>
+                <h3 className="text-xl font-bold text-white">{service.title}</h3>
+                <p className="mt-3 text-slate-400 leading-relaxed">
+                  {service.text}
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 py-20 bg-slate-900/50">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-[0.9fr_1.1fr] gap-10 items-start">
+          <div>
+            <p className="text-blue-300 font-semibold">Featured Work</p>
+            <h2 className="mt-3 text-4xl md:text-5xl font-black tracking-tight">
+              Projects with operational purpose.
+            </h2>
+            <p className="mt-5 text-slate-400 text-lg leading-relaxed">
+              These examples show the type of work I build: dashboards,
+              automations, and structured systems that help organizations
+              understand work, route work, and reduce manual follow-up.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3">
+              {Object.keys(projects).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveProject(key)}
+                  className={`text-left rounded-2xl border p-5 transition ${
+                    activeProject === key
+                      ? "border-blue-400 bg-blue-500/10"
+                      : "border-white/10 bg-white/[0.03] hover:border-blue-400/40"
+                  }`}
+                >
+                  <p className="text-sm text-blue-300">{projects[key].tag}</p>
+                  <h3 className="mt-1 text-xl font-bold">{projects[key].title}</h3>
+                </button>
+              ))}
             </div>
           </div>
-        </header>
 
-        {/* About Me */}
-        <section className="p-6 border-b border-gray-800">
-          <h2 className="text-2xl font-semibold mb-2">About Me</h2>
-          <p className="text-gray-800 dark:text-gray-300 max-w-3xl">
-            I’m an IT and Data Operations professional with hands-on experience
-            across Microsoft 365 solutions, Power BI, SharePoint, and Power
-            Automate. I enjoy building streamlined workflows, dashboards, and
-            digital solutions that make complex operations easier to manage.
-          </p>
-        </section>
-
-        {/* Projects */}
-        <section className="p-6 border-b border-gray-800">
-          <h2 className="text-2xl font-semibold mb-4">Projects</h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            <button
-              onClick={() => setActiveProject("tasker")}
-              className="
-                bg-white border border-gray-200 dark:bg-gray-900 dark:border-transparent
-                p-6 rounded-xl
-                hover:shadow-[0_0_15px_rgba(0,153,255,0.5)] 
-                dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] 
-                transition
-              "
-            >
-              Tasker Ops Dashboard
-            </button>
-            <button
-              onClick={() => setActiveProject("sharepoint")}
-              className="
-                bg-white border border-gray-200 dark:bg-gray-900 dark:border-transparent
-                p-6 rounded-xl
-                hover:shadow-[0_0_15px_rgba(0,153,255,0.5)] 
-                dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] 
-                transition
-              "
-            >
-              SharePoint Automation
-            </button>
-            <button
-              onClick={() => setActiveProject("knowledge")}
-              className="
-                bg-white border border-gray-200 dark:bg-gray-900 dark:border-transparent
-                p-6 rounded-xl
-                hover:shadow-[0_0_15px_rgba(0,153,255,0.5)] 
-                dark:hover:shadow-[0_0_15px_rgba(0,153,255,0.7)] 
-                transition
-              "
-            >
-              Knowledge & Records
-            </button>
-          </div>
-
-          {/* Dynamic project description */}
-          {activeProject && (
-            <div className="mt-6 bg-white/70 dark:bg-white/5 backdrop-blur-md p-6 border border-blue-500 rounded-lg transition-all">
-              <h3 className="text-xl font-bold text-blue-400 mb-2">
-                {projectDescriptions[activeProject].title}
+          <article className="rounded-[2rem] border border-blue-400/30 bg-slate-950 p-8 shadow-[0_0_40px_rgba(59,130,246,0.12)]">
+            <div className="rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-400/10 border border-white/10 p-6">
+              <p className="text-sm text-blue-200">{projects[activeProject].tag}</p>
+              <h3 className="mt-3 text-3xl font-black">
+                {projects[activeProject].title}
               </h3>
-              <p className="text-gray-800 dark:text-gray-300">
-                {projectDescriptions[activeProject].content}
+              <p className="mt-5 text-slate-300 leading-relaxed">
+                {projects[activeProject].description}
               </p>
             </div>
-          )}
-        </section>
 
-        {/* Certifications */}
-        <section className="p-6 border-b border-gray-800">
-          <h2 className="text-2xl font-semibold mb-2">Certifications</h2>
-          <ul className="list-disc list-inside text-gray-800 dark:text-gray-300 max-w-3xl">
-            <li>PL-300: Microsoft Power BI Data Analyst Associate (In Progress)</li>
-            <li>CompTIA Security+ (Planned)</li>
-            <li>Top Secret (TS) Clearance – Active</li>
-          </ul>
-        </section>
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <p className="text-sm uppercase tracking-[0.2em] text-blue-300">Value</p>
+              <p className="mt-3 text-slate-300 leading-relaxed">
+                {projects[activeProject].impact}
+              </p>
+            </div>
 
-        {/* Contact */}
-        <section className="p-6">
-          <h2 className="text-2xl font-semibold mb-2">Contact</h2>
-          <p className="text-gray-800 dark:text-gray-300 max-w-3xl">
-            Let’s connect!
+            <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-2xl font-bold text-blue-300">Track</p>
+                <p className="text-xs text-slate-500 mt-1">status</p>
+              </div>
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-2xl font-bold text-blue-300">Route</p>
+                <p className="text-xs text-slate-500 mt-1">work</p>
+              </div>
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-2xl font-bold text-blue-300">Report</p>
+                <p className="text-xs text-slate-500 mt-1">metrics</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="px-6 py-20 bg-slate-950">
+        <div className="max-w-6xl mx-auto rounded-[2rem] border border-white/10 bg-gradient-to-br from-blue-500/10 to-slate-900 p-8 md:p-12">
+          <div className="grid lg:grid-cols-[1fr_0.8fr] gap-8 items-center">
+            <div>
+              <p className="text-blue-300 font-semibold">Why It Matters</p>
+              <h2 className="mt-3 text-4xl md:text-5xl font-black tracking-tight">
+                I understand the gap between operations and technology.
+              </h2>
+              <p className="mt-5 text-slate-300 text-lg leading-relaxed">
+                A lot of teams do not need flashy software. They need someone
+                who understands the process, the people, the reporting
+                requirements, and the pain of doing everything manually. That’s
+                where I bring value.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {[
+                "Built around real operational workflows",
+                "Microsoft 365-first solutions",
+                "Dashboard and automation mindset",
+                "Clear communication for technical and non-technical users"
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-slate-200"
+                >
+                  ✓ {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 py-20 bg-slate-900/50">
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-blue-300 font-semibold">Let’s Connect</p>
+          <h2 className="mt-3 text-4xl md:text-5xl font-black tracking-tight">
+            Need a dashboard, workflow, or internal system cleaned up?
+          </h2>
+          <p className="mt-5 text-slate-400 text-lg leading-relaxed">
+            I’m building solutions around Power BI, SharePoint, Power Automate,
+            Microsoft 365, and data operations — with a focus on practical
+            automation that helps teams actually work better.
           </p>
-          <ul className="space-y-1 mt-2">
-            <li>
-              <a
-                href="https://www.linkedin.com/in/elijah-charo-255889207"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
-              >
-                LinkedIn
-              </a>
-            </li>
-            <li>
-              <a
-                href="mailto:elijahcharo285@gmail.com"
-                className="text-blue-400 hover:underline"
-              >
-                elijahcharo285@gmail.com
-              </a>
-            </li>
-          </ul>
-        </section>
 
-        {/* Footer */}
-        <footer className="p-4 text-center text-sm text-gray-400 dark:text-gray-500">
-          © {new Date().getFullYear()} Elijah Charo. Built with React, Vite & Tailwind CSS.
-        </footer>
-      </main>
-    </>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <a
+              href="mailto:elijahcharo285@gmail.com"
+              className="rounded-full bg-blue-500 px-7 py-3 font-semibold text-white shadow-[0_0_30px_rgba(59,130,246,0.35)] hover:bg-blue-400 transition"
+            >
+              Email Me
+            </a>
+            <a
+              href="https://www.linkedin.com/in/elijah-charo-255889207"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border border-slate-600 px-7 py-3 font-semibold text-slate-100 hover:border-blue-400 hover:text-blue-300 transition"
+            >
+              LinkedIn
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <footer className="px-6 py-8 border-t border-white/10 bg-slate-950 text-center text-sm text-slate-500">
+        © {new Date().getFullYear()} Elijah Charo. Built with React, Vite,
+        Tailwind CSS, and Microsoft automation energy.
+      </footer>
+    </main>
   );
 }
