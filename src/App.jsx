@@ -43,7 +43,7 @@ export default function ElijahCharoPortfolio() {
         <header className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 text-center">
           <div className="p-6 flex flex-col items-center">
             <img
-  src="/your-image-file-name.jpg"
+  src="/elijah-charo-power-bi-sharepoint-automation-specialist-san-antonio.jpg"
   alt="Elijah Charo - Power BI, SharePoint, and Automation Specialist in San Antonio"
   className="w-24 h-24 rounded-full object-cover border-2 border-blue-400 shadow-lg mb-4"
 />
