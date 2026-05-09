@@ -62,7 +62,7 @@ export default function ElijahCharoPortfolio() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden">
-      <section className="relative min-h-screen flex items-center justify-center px-6 py-20">
+      <section className="relative min-h-screen flex items-center justify-center px-6 py-16">
         <div className="absolute inset-x-0 top-0 h-[520px] overflow-hidden">
           <video
             autoPlay
@@ -80,28 +80,28 @@ export default function ElijahCharoPortfolio() {
 
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.30),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_35%)]" />
 
-        <div className="relative z-10 max-w-6xl w-full grid lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
-          <section className="rounded-[2rem] border border-white/10 bg-slate-950/55 p-6 md:p-10 backdrop-blur-xl shadow-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-2 text-sm text-blue-200 mb-6">
+        <div className="relative z-10 max-w-7xl w-full grid lg:grid-cols-[1.35fr_0.9fr] gap-12 items-center">
+          <section className="rounded-[2rem] border border-white/10 bg-slate-950/55 p-6 md:p-8 backdrop-blur-xl shadow-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-2 text-sm text-blue-200 mb-5">
               <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
               San Antonio · Microsoft 365 · Data Automation
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-tight">
+            <h1 className="text-4xl md:text-6xl font-black tracking-tight leading-[0.98]">
               I build systems that turn
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-200 to-blue-500">
                 manual work into momentum.
               </span>
             </h1>
 
-            <p className="mt-6 text-lg md:text-xl text-slate-300 max-w-2xl leading-relaxed">
+            <p className="mt-5 text-base md:text-lg text-slate-300 max-w-3xl leading-relaxed">
               I’m Elijah Charo — a Data & Automation Specialist focused on
               Power BI dashboards, SharePoint systems, Power Automate workflows,
               and Microsoft 365 solutions that help teams work faster and make
               better decisions.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-4">
+            <div className="mt-7 flex flex-wrap gap-4">
               <a
                 href="mailto:elijahcharo285@gmail.com"
                 className="rounded-full bg-blue-500 px-6 py-3 font-semibold text-white shadow-[0_0_30px_rgba(59,130,246,0.35)] hover:bg-blue-400 transition"
@@ -118,7 +118,7 @@ export default function ElijahCharoPortfolio() {
               </a>
             </div>
 
-            <div className="mt-10 grid grid-cols-3 gap-4 max-w-xl">
+            <div className="mt-7 grid grid-cols-3 gap-4 max-w-3xl">
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <p className="text-3xl font-bold text-blue-300">40K+</p>
                 <p className="text-sm text-slate-400">Personnel-supported environment</p>
