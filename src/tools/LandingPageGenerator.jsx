@@ -234,6 +234,11 @@ function lower(value, fallback) {
   return (value || fallback).trim().toLowerCase()
 }
 
+function sentence(value, fallback) {
+  const text = (value || fallback).trim()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 function getGeneratedCopy(profile, services) {
   const goal = goalCopy[profile.businessGoal] || goalCopy.bookings
   const vibe = vibeCopy[profile.brandVibe] || vibeCopy.clean
@@ -241,40 +246,89 @@ function getGeneratedCopy(profile, services) {
   const offer = profile.primaryOffer || services[0] || 'featured offer'
   const target = profile.targetCustomer || 'local customers'
   const industry = profile.industry || 'small business'
+  const business = profile.businessName || 'the business'
   const packageLine = profile.packageType === 'advanced'
-    ? 'The advanced concept adds proof, gallery, FAQ, and booking sections so visitors have more reasons to take action.'
-    : 'The basic concept keeps the page focused on the offer, services, contact options, and one clear next step.'
+    ? `${business} gives visitors proof, answers, featured work, and a smooth path to ${goal.channel} before they ever have to guess what comes next.`
+    : `${business} keeps the essentials clear: what you offer, why it helps, and the fastest way for customers to ${goal.channel}.`
+
+  const serviceDescriptions = services.map((service) => ({
+    service,
+    description: `${sentence(service, 'This service')} helps ${lower(target, 'local customers')} get the right ${lower(industry, 'service')} without extra back-and-forth. ${business} connects it to ${lower(offer, 'the main offer')} and keeps the next step simple when you are ready to ${goal.channel}.`,
+  }))
+
+  const faqs = [
+    ['How fast can someone get started?', `${business} can make the next step simple with a clear ${goal.cta.toLowerCase()} button and easy contact options.`],
+    ['Who is this best for?', `It is built for ${lower(target, 'local customers')} who want a reliable ${lower(industry, 'business')} without confusion.`],
+    ['What should the customer do next?', `${goal.cta} and ask about ${lower(offer, 'the main offer')}.`],
+  ]
 
   return {
-    headline: `${vibe.opener} ${lower(offer, 'your offer')}.`,
-    subheadline: `Built for ${lower(target, 'local customers')} looking for a ${lower(industry, 'small business')} they can trust. This ${pkg.label} uses ${vibe.tone} to ${goal.action}.`,
+    headline: `${sentence(offer, 'A better local offer')} for ${lower(target, 'local customers')}.`,
+    subheadline: `${business} makes it easy to understand the services, trust the process, and take the next step. The experience feels ${vibe.feel} while helping customers ${goal.channel} with confidence.`,
     primaryCta: goal.cta,
     secondaryCta: profile.businessGoal === 'walk-ins' ? 'View service area' : 'View services',
-    trustHeading: `${goal.trust} for a ${profile.brandVibe} ${lower(industry, 'business')} demo`,
-    trustBody: `${packageLine} The goal is to help customers quickly understand the offer, feel confident, and ${goal.channel} without digging around.`,
-    servicesHeading: `Services that support ${lower(offer, 'the main offer')}`,
-    servicesIntro: `Each section is written for ${lower(target, 'local customers')} and points back to the selected goal: ${goal.action}.`,
-    aboutHeading: `About ${profile.businessName || 'the business'}`,
-    aboutBody: `${profile.businessName || 'This business'} needs a ${profile.brandVibe} online presence that explains the offer quickly, shows what makes the team credible, and helps ${lower(target, 'local customers')} take action.`,
-    testimonialHeading: 'What happy customers could say',
+    trustHeading: `Why choose ${business}?`,
+    trustBody: `${packageLine} Customers can see the offer, compare the core services, and reach out without digging for basic information.`,
+    servicesHeading: `Services built around ${lower(offer, 'the main offer')}`,
+    servicesIntro: `Clear service details help ${lower(target, 'local customers')} know what to expect before they ${goal.channel}.`,
+    serviceDescriptions,
+    whyChoose: [
+      ['Clear offer', `${business} leads with ${lower(offer, 'a focused offer')} so customers understand the value quickly.`],
+      ['Easy next step', `${goal.cta} stays simple for customers who are ready to ${goal.channel}.`],
+      ['Built for trust', `Service details, local contact info, and direct answers help ${lower(target, 'local customers')} feel ready to reach out.`],
+    ],
+    aboutHeading: `About ${business}`,
+    aboutBody: `${business} serves ${lower(target, 'local customers')} with practical ${lower(industry, 'small business')} help, clear communication, and a ${profile.brandVibe} customer experience from first look to final next step.`,
+    testimonialHeading: `Customers choose ${business} because it is easy to start`,
+    testimonials: [
+      `${business} made it easy to understand the services and choose the right option.`,
+      `I knew exactly how to get started, and the process felt simple from the first call.`,
+      `The experience felt ${profile.brandVibe}, professional, and easy to trust.`,
+    ],
     faqHeading: 'Questions customers ask before they act',
-    galleryHeading: `${profile.brandVibe} featured work preview`,
+    faqs,
+    galleryHeading: `See the work before you ${goal.channel}`,
     bookingHeading: goal.contactHeading,
-    bookingBody: `Use this section to push ${goal.channel}s with a stronger ${pkg.price} demo experience: offer reminder, proof, and a clear CTA in one place.`,
+    bookingBody: `${business} is ready to help with ${lower(offer, 'the main offer')}. Reach out now to confirm availability, ask a quick question, or take the next step while it is fresh.`,
     contactHeading: goal.contactHeading,
-    contactBody: `This page gives ${lower(target, 'local customers')} a fast way to see services, trust the business, and ${goal.channel} when they are ready.`,
+    contactBody: `This page gives ${lower(target, 'local customers')} a fast way to see services, trust ${business}, and ${goal.channel} when they are ready.`,
   }
 }
 
 function buildClientPitch(profile) {
   const advancedLine = profile.packageType === 'advanced'
     ? 'This advanced version would include testimonials, a gallery or featured work section, FAQ, and a stronger booking CTA.'
-    : 'A basic version would focus on the offer, services, contact buttons, and social/contact links.'
+    : 'A basic version would focus on the offer, services, a why-choose-us section, contact buttons, and social/contact links.'
 
   return `I made a quick landing page concept for ${profile.businessName || 'your business'}. The goal is to help ${lower(profile.targetCustomer, 'customers')} quickly see your ${lower(profile.industry, 'business')}, understand ${lower(profile.primaryOffer, 'your offer')}, and ${goalCopy[profile.businessGoal]?.channel || 'take action'} without having to search around. ${advancedLine} The basic version would be $400, while the advanced version with testimonials, gallery, FAQ, and stronger booking sections would be $600.`
 }
 
-function buildProjectBrief(profile, services, generatedCopy, clientPitch) {
+function buildPageCopy(generatedCopy) {
+  return [
+    'Generated Page Copy',
+    '',
+    `Headline: ${generatedCopy.headline}`,
+    `Subheadline: ${generatedCopy.subheadline}`,
+    `Primary CTA: ${generatedCopy.primaryCta}`,
+    '',
+    'Services:',
+    ...generatedCopy.serviceDescriptions.map(({ service, description }) => `- ${service}: ${description}`),
+    '',
+    `Trust section: ${generatedCopy.trustHeading}`,
+    generatedCopy.trustBody,
+    '',
+    'Why Choose Us:',
+    ...generatedCopy.whyChoose.map(([title, body]) => `- ${title}: ${body}`),
+    '',
+    'FAQ:',
+    ...generatedCopy.faqs.map(([question, answer]) => `- ${question} ${answer}`),
+    '',
+    `Contact CTA: ${generatedCopy.contactHeading}`,
+    generatedCopy.contactBody,
+  ].join('\n')
+}
+
+function buildProjectBrief(profile, services, generatedCopy, clientPitch, pageCopy) {
   const pkg = packageDetails(profile.packageType)
   const visibleSocials = Object.entries(profile.socials)
     .filter(([, value]) => value)
@@ -305,14 +359,7 @@ function buildProjectBrief(profile, services, generatedCopy, clientPitch) {
     'Social/contact links:',
     ...(visibleSocials.length ? visibleSocials.map((line) => `- ${line}`) : ['- Not provided']),
     '',
-    'Generated page copy:',
-    `Headline: ${generatedCopy.headline}`,
-    `Subheadline: ${generatedCopy.subheadline}`,
-    `Primary CTA: ${generatedCopy.primaryCta}`,
-    `Trust heading: ${generatedCopy.trustHeading}`,
-    `Trust body: ${generatedCopy.trustBody}`,
-    `Contact heading: ${generatedCopy.contactHeading}`,
-    `Contact body: ${generatedCopy.contactBody}`,
+    pageCopy,
     '',
     'Client pitch:',
     clientPitch,
@@ -521,7 +568,7 @@ function HeroSection({ profile, generatedCopy }) {
     <section className="grid items-center gap-8 px-5 pb-12 pt-6 md:grid-cols-[1.05fr_0.95fr] md:px-8 md:pb-16 md:pt-10">
       <div className="grid gap-5">
         <p className="w-fit rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide text-white" style={{ backgroundColor: profile.colors.primary }}>
-          {packageDetails(profile.packageType).label} {packageDetails(profile.packageType).price}
+          {profile.industry || 'Local business'} service
         </p>
         <h2 className="max-w-3xl text-4xl font-black leading-none tracking-normal sm:text-5xl lg:text-6xl">{generatedCopy.headline}</h2>
         <p className="max-w-2xl text-base leading-8 opacity-75 sm:text-lg">{generatedCopy.subheadline}</p>
@@ -552,7 +599,7 @@ function HeroSection({ profile, generatedCopy }) {
   )
 }
 
-function ServicesSection({ services, colors, generatedCopy }) {
+function ServicesSection({ generatedCopy, colors }) {
   return (
     <section id="services" className="px-5 py-14 md:px-8">
       <div className="mb-8 max-w-3xl">
@@ -560,12 +607,12 @@ function ServicesSection({ services, colors, generatedCopy }) {
         <p className="mt-3 text-base leading-7 opacity-70">{generatedCopy.servicesIntro}</p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        {services.map((service, index) => (
-          <article key={`${service}-${index}`} className="grid min-h-[190px] content-between rounded-lg border border-slate-200 bg-white/70 p-5 shadow-sm">
+        {generatedCopy.serviceDescriptions.map(({ service, description }, index) => (
+          <article key={`${service}-${index}`} className="grid min-h-[220px] content-between rounded-lg border border-slate-200 bg-white/75 p-5 shadow-sm">
             <span className="grid h-10 w-10 place-items-center rounded-lg text-xs font-black" style={{ backgroundColor: `${index % 2 === 0 ? colors.primary : colors.accent}22`, color: index % 2 === 0 ? colors.primary : '#9a6a00' }}>{String(index + 1).padStart(2, '0')}</span>
             <div>
               <h3 className="text-xl font-black leading-tight">{service}</h3>
-              <p className="mt-3 text-sm leading-6 opacity-70">Short service copy can explain value, reduce hesitation, and point back to the main CTA.</p>
+              <p className="mt-3 text-sm leading-6 opacity-75">{description}</p>
             </div>
           </article>
         ))}
@@ -600,6 +647,26 @@ function TrustSection({ profile, generatedCopy }) {
   )
 }
 
+function BasicWhyChoose({ generatedCopy, colors }) {
+  return (
+    <section className="px-5 py-14 md:px-8">
+      <div className="mb-6 max-w-3xl">
+        <p className="text-xs font-black uppercase tracking-wide opacity-60">Why Choose Us</p>
+        <h2 className="mt-2 text-3xl font-black leading-tight sm:text-4xl">{generatedCopy.trustHeading}</h2>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        {generatedCopy.whyChoose.map(([title, body], index) => (
+          <article key={title} className="rounded-lg border border-slate-200 bg-white/75 p-5">
+            <span className="grid h-9 w-9 place-items-center rounded-lg text-xs font-black text-white" style={{ backgroundColor: index === 1 ? colors.accent : colors.primary }}>{index + 1}</span>
+            <h3 className="mt-5 text-lg font-black">{title}</h3>
+            <p className="mt-2 text-sm leading-6 opacity-75">{body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function BasicContactLinks({ profile }) {
   const visibleSocials = socialFields.filter(([key]) => profile.socials[key])
 
@@ -620,18 +687,12 @@ function BasicContactLinks({ profile }) {
 }
 
 function AdvancedSections({ profile, generatedCopy }) {
-  const faqs = [
-    ['How fast can someone get started?', `They can ${goalCopy[profile.businessGoal]?.channel || 'reach out'} as soon as they are ready, using the primary CTA.`],
-    ['What makes this business different?', `The page can highlight the ${profile.brandVibe} experience, customer proof, and the main offer.`],
-    ['What should the customer do next?', generatedCopy.primaryCta],
-  ]
-
   return (
     <>
       <section className="px-5 py-14 md:px-8">
         <div className="grid gap-6 rounded-lg border border-slate-200 bg-white/70 p-6 md:grid-cols-[0.9fr_1.1fr]">
           <div>
-            <p className="text-xs font-black uppercase tracking-wide opacity-60">About section</p>
+            <p className="text-xs font-black uppercase tracking-wide opacity-60">About</p>
             <h2 className="mt-2 text-3xl font-black">{generatedCopy.aboutHeading}</h2>
           </div>
           <p className="text-base leading-8 opacity-75">{generatedCopy.aboutBody}</p>
@@ -639,9 +700,10 @@ function AdvancedSections({ profile, generatedCopy }) {
       </section>
 
       <section className="px-5 py-14 md:px-8">
-        <h2 className="text-3xl font-black">{generatedCopy.testimonialHeading}</h2>
+        <p className="text-xs font-black uppercase tracking-wide opacity-60">Testimonials</p>
+        <h2 className="mt-2 text-3xl font-black">{generatedCopy.testimonialHeading}</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
-          {['Clear and easy to book.', 'Professional from start to finish.', 'Exactly what I needed locally.'].map((quote) => (
+          {generatedCopy.testimonials.map((quote) => (
             <blockquote key={quote} className="rounded-lg border border-slate-200 bg-white/75 p-5 text-sm leading-7 shadow-sm">"{quote}"<footer className="mt-4 font-black opacity-70">Demo customer</footer></blockquote>
           ))}
         </div>
@@ -649,20 +711,22 @@ function AdvancedSections({ profile, generatedCopy }) {
 
       <section id="work" className="px-5 py-14 md:px-8">
         <div className="mb-6">
-          <h2 className="text-3xl font-black">{generatedCopy.galleryHeading}</h2>
-          <p className="mt-3 leading-7 opacity-70">Placeholder blocks can become before-and-after photos, food shots, haircut photos, service examples, or event highlights.</p>
+          <p className="text-xs font-black uppercase tracking-wide opacity-60">Gallery / Featured Work</p>
+          <h2 className="mt-2 text-3xl font-black">{generatedCopy.galleryHeading}</h2>
+          <p className="mt-3 leading-7 opacity-70">A few strong photos help customers see the quality, style, and results before they reach out.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          {[1, 2, 3].map((item) => (
-            <div key={item} className="grid aspect-[4/3] place-items-center rounded-lg border border-dashed border-slate-300 bg-white/60 text-sm font-black opacity-70">Featured work {item}</div>
+          {['Recent result', 'Customer favorite', 'Service example'].map((item) => (
+            <div key={item} className="grid aspect-[4/3] place-items-center rounded-lg border border-dashed border-slate-300 bg-white/60 text-sm font-black opacity-70">{item}</div>
           ))}
         </div>
       </section>
 
       <section className="px-5 py-14 md:px-8">
-        <h2 className="text-3xl font-black">{generatedCopy.faqHeading}</h2>
+        <p className="text-xs font-black uppercase tracking-wide opacity-60">FAQ</p>
+        <h2 className="mt-2 text-3xl font-black">{generatedCopy.faqHeading}</h2>
         <div className="mt-6 grid gap-3">
-          {faqs.map(([question, answer]) => (
+          {generatedCopy.faqs.map(([question, answer]) => (
             <div key={question} className="rounded-lg border border-slate-200 bg-white/75 p-5">
               <h3 className="font-black">{question}</h3>
               <p className="mt-2 text-sm leading-6 opacity-70">{answer}</p>
@@ -672,7 +736,8 @@ function AdvancedSections({ profile, generatedCopy }) {
       </section>
 
       <section className="px-5 py-14 text-white md:px-8" style={{ backgroundColor: profile.colors.primary }}>
-        <div className="grid gap-5 md:grid-cols-[1fr_auto] md:items-center">
+        <p className="text-xs font-black uppercase tracking-wide text-white/70">Ready to book</p>
+        <div className="mt-2 grid gap-5 md:grid-cols-[1fr_auto] md:items-center">
           <div>
             <h2 className="text-3xl font-black">{generatedCopy.bookingHeading}</h2>
             <p className="mt-3 max-w-2xl leading-7 text-white/75">{generatedCopy.bookingBody}</p>
@@ -703,14 +768,14 @@ function PreviewFooter({ profile }) {
   return (
     <footer className="flex flex-col gap-4 px-5 py-7 text-sm font-bold opacity-80 sm:flex-row sm:items-center sm:justify-between md:px-8">
       <span>{profile.businessName || 'Demo Business'}</span>
-      <span>{packageDetails(profile.packageType).label} demo</span>
+      <span>Ready when you are</span>
     </footer>
   )
 }
 
-function OutputPanel({ projectBrief, clientPitch, onCopyBrief, onCopyPitch, onReset, copyStatus }) {
+function OutputPanel({ projectBrief, clientPitch, pageCopy, onCopyBrief, onCopyPitch, onCopyPageCopy, onReset, copyStatus }) {
   return (
-    <section className="mx-auto mt-5 grid max-w-6xl gap-4 lg:grid-cols-2">
+    <section className="mx-auto mt-5 grid max-w-6xl gap-4 xl:grid-cols-3">
       <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-white">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-black uppercase tracking-wide text-cyan-200">Project Brief</h2>
@@ -721,19 +786,26 @@ function OutputPanel({ projectBrief, clientPitch, onCopyBrief, onCopyPitch, onRe
       <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-white">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-black uppercase tracking-wide text-cyan-200">Client Pitch</h2>
-          <div className="flex flex-wrap gap-2">
-            <ActionButton onClick={onCopyPitch} tone="cyan"><Icon name="copy" />Copy Client Pitch</ActionButton>
-            <ActionButton onClick={onReset}><Icon name="reset" />Reset Demo</ActionButton>
-          </div>
+          <ActionButton onClick={onCopyPitch} tone="cyan"><Icon name="copy" />Copy Client Pitch</ActionButton>
         </div>
         <textarea readOnly value={clientPitch} rows={10} className="w-full resize-y rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-xs leading-5 text-slate-200 outline-none" />
       </div>
-      {copyStatus ? <p className="lg:col-span-2 text-sm font-bold text-cyan-700">{copyStatus}</p> : null}
+      <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-white">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-black uppercase tracking-wide text-cyan-200">Page Copy</h2>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton onClick={onCopyPageCopy} tone="cyan"><Icon name="copy" />Copy Page Copy</ActionButton>
+            <ActionButton onClick={onReset}><Icon name="reset" />Reset Demo</ActionButton>
+          </div>
+        </div>
+        <textarea readOnly value={pageCopy} rows={10} className="w-full resize-y rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-xs leading-5 text-slate-200 outline-none" />
+      </div>
+      {copyStatus ? <p className="xl:col-span-3 text-sm font-bold text-cyan-700">{copyStatus}</p> : null}
     </section>
   )
 }
 
-function LandingPreview({ profile, services, generatedCopy }) {
+function LandingPreview({ profile, generatedCopy }) {
   const isAdvanced = profile.packageType === 'advanced'
 
   return (
@@ -746,9 +818,10 @@ function LandingPreview({ profile, services, generatedCopy }) {
       <article className="mx-auto max-w-6xl overflow-hidden rounded-lg border border-slate-200 shadow-2xl shadow-blue-950/20" style={{ backgroundColor: profile.colors.background, color: profile.colors.text }}>
         <PreviewHeader profile={profile} />
         <HeroSection profile={profile} generatedCopy={generatedCopy} />
-        <ServicesSection services={services} colors={profile.colors} generatedCopy={generatedCopy} />
+        <ServicesSection generatedCopy={generatedCopy} colors={profile.colors} />
         <TrustSection profile={profile} generatedCopy={generatedCopy} />
-        {isAdvanced ? <AdvancedSections profile={profile} generatedCopy={generatedCopy} /> : <BasicContactLinks profile={profile} />}
+        {isAdvanced ? <AdvancedSections profile={profile} generatedCopy={generatedCopy} /> : <BasicWhyChoose generatedCopy={generatedCopy} colors={profile.colors} />}
+        {!isAdvanced ? <BasicContactLinks profile={profile} /> : null}
         <ContactSection profile={profile} generatedCopy={generatedCopy} />
         <PreviewFooter profile={profile} />
       </article>
@@ -762,8 +835,9 @@ export default function LandingPageGenerator() {
   const services = useMemo(() => splitServices(profile.services), [profile.services])
   const visibleServices = services.length ? services : ['Primary service', 'Support service', 'Follow-up service']
   const generatedCopy = useMemo(() => getGeneratedCopy(profile, visibleServices), [profile, visibleServices])
-  const clientPitch = useMemo(() => buildClientPitch(profile, generatedCopy), [profile, generatedCopy])
-  const projectBrief = useMemo(() => buildProjectBrief(profile, visibleServices, generatedCopy, clientPitch), [profile, visibleServices, generatedCopy, clientPitch])
+  const pageCopy = useMemo(() => buildPageCopy(generatedCopy), [generatedCopy])
+  const clientPitch = useMemo(() => buildClientPitch(profile), [profile])
+  const projectBrief = useMemo(() => buildProjectBrief(profile, visibleServices, generatedCopy, clientPitch, pageCopy), [profile, visibleServices, generatedCopy, clientPitch, pageCopy])
 
   async function copyText(label, text) {
     try {
@@ -784,13 +858,15 @@ export default function LandingPageGenerator() {
       <div className="grid min-h-screen lg:grid-cols-[minmax(320px,460px)_minmax(0,1fr)]">
         <GeneratorForm profile={profile} setProfile={setProfile} />
         <div className="min-w-0 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_28%),linear-gradient(180deg,_#0f172a,_#111827)]">
-          <LandingPreview profile={profile} services={visibleServices} generatedCopy={generatedCopy} />
+          <LandingPreview profile={profile} generatedCopy={generatedCopy} />
           <div className="px-4 pb-6 lg:px-6">
             <OutputPanel
               projectBrief={projectBrief}
               clientPitch={clientPitch}
+              pageCopy={pageCopy}
               onCopyBrief={() => copyText('Project brief', projectBrief)}
               onCopyPitch={() => copyText('Client pitch', clientPitch)}
+              onCopyPageCopy={() => copyText('Page copy', pageCopy)}
               onReset={resetDemo}
               copyStatus={copyStatus}
             />
