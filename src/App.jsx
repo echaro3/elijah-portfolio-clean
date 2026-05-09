@@ -95,7 +95,7 @@ export default function ElijahCharoPortfolio() {
             </h1>
 
             <p className="mt-5 text-base md:text-lg text-slate-300 max-w-3xl leading-relaxed">
-              I’m Elijah Charo — a Data & Automation Specialist focused on
+              I’m Elijah Charo - a Data & Automation Specialist focused on
               Power BI dashboards, SharePoint systems, Power Automate workflows,
               and Microsoft 365 solutions that help teams work faster and make
               better decisions.
@@ -309,7 +309,7 @@ export default function ElijahCharoPortfolio() {
           </h2>
           <p className="mt-5 text-slate-400 text-lg leading-relaxed">
             I’m building solutions around Power BI, SharePoint, Power Automate,
-            Microsoft 365, and data operations — with a focus on practical
+            Microsoft 365, and data operations - with a focus on practical
             automation that helps teams actually work better.
           </p>
 
