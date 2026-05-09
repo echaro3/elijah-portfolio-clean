@@ -45,10 +45,10 @@ export default function ElijahCharoPortfolio() {
             <img
               src="/elijah-charo-power-bi-sharepoint-automation-specialist-san-antonio.jpg"
               alt="Elijah Charo - Power BI, SharePoint, and Automation Specialist in San Antonio"
-              width="728"
-              height="625"
+              width="96"
+              height="96"
               loading="eager"
-              className="w-28 h-28 md:w-36 md:h-36 rounded-full object-cover object-top border-2 border-blue-400 shadow-[0_0_20px_rgba(96,165,250,0.35)] mb-5 bg-gray-900"
+              className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover object-top border-2 border-blue-400 shadow-[0_0_14px_rgba(96,165,250,0.35)] mb-4 bg-gray-900"
             />
             <h1 className="text-3xl font-bold text-black dark:text-white">Elijah Charo</h1>
             <p className="text-gray-400 dark:text-gray-300 mt-1">
