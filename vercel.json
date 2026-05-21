@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/charostudios",
+      "destination": "/"
+    },
+    {
+      "source": "/charostudios/:path*",
+      "destination": "/"
+    }
+  ]
+}
