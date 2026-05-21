@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { CharoStudiosExperience } from "./CharoStudios.jsx";
 
 const projects = {
   tasker: { title: "Tasker Operations Dashboard", tag: "Power BI / SharePoint", description: "Interactive reporting for task status, suspense tracking, overdue items, and leadership visibility.", impact: "Designed to replace scattered manual tracking with centralized performance insights and operational decision support." },
@@ -14,147 +15,6 @@ const services = [
   { title: "Power Apps & SharePoint Systems", text: "Structured apps, lists, libraries, forms, and permissions built around real business processes." },
   { title: "Automation Workflows", text: "Power Automate flows that reduce manual routing, reminders, status updates, and repetitive admin work." }
 ];
-
-const charoProducts = [
-  { id: "studio-flare-hoodie", name: "Studio Flare Hoodie", price: 148, color: "Washed Black", status: "Limited", image: "/charostudios-assets/studio-flare-hoodie.png", alt: "Washed black oversized hoodie with distressed seams and abstract chest artwork.", sizes: ["S", "M", "L", "XL"] },
-  { id: "painted-work-pant", name: "Painted Work Pant", price: 186, color: "Vintage Grey", status: "Limited", image: "/charostudios-assets/painted-work-pant.png", alt: "Distressed vintage grey work pant with paint splatter and raw hems.", sizes: ["30", "32", "34", "36"] },
-  { id: "core-logo-tee", name: "Core Logo Tee", price: 64, color: "Bone", status: "Low stock", image: "/charostudios-assets/core-logo-tee.png", alt: "Bone oversized tee with a small black and red abstract chest emblem.", sizes: ["S", "M", "L", "XL"] },
-  { id: "numbered-trucker", name: "Numbered Trucker", price: 48, color: "Faded Black", status: "Limited", image: "/charostudios-assets/numbered-trucker.png", alt: "Faded black trucker cap with worn brim and small embroidered abstract mark.", sizes: ["OS"] }
-];
-
-const initialCharoCart = [
-  { productId: "studio-flare-hoodie", size: "L", quantity: 1 },
-  { productId: "painted-work-pant", size: "32", quantity: 1 }
-];
-
-const formatStorePrice = (value) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
-
-function StoreIcon({ name, size = 18 }) {
-  const shared = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" };
-  const paths = {
-    arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
-    bag: <><path d="M6 8h12l-1 12H7L6 8Z" /><path d="M9 8a3 3 0 0 1 6 0" /></>,
-    lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-    menu: <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>,
-    x: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
-    plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
-    minus: <path d="M5 12h14" />
-  };
-
-  return <svg {...shared}>{paths[name]}</svg>;
-}
-
-function CharoStudiosStorefront() {
-  const [cartOpen, setCartOpen] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 900));
-  const [cartItems, setCartItems] = useState(initialCharoCart);
-  const [selectedSizes, setSelectedSizes] = useState(Object.fromEntries(charoProducts.map((product) => [product.id, product.sizes[0]])));
-  const [checkoutNotice, setCheckoutNotice] = useState(false);
-  const checkoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL || "";
-  const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
-  const subtotal = cartItems.reduce((total, item) => {
-    const product = charoProducts.find((entry) => entry.id === item.productId);
-    return total + (product?.price || 0) * item.quantity;
-  }, 0);
-
-  const addToCart = (productId) => {
-    const size = selectedSizes[productId];
-    setCartItems((current) => {
-      const existing = current.find((item) => item.productId === productId && item.size === size);
-      if (existing) {
-        return current.map((item) => item.productId === productId && item.size === size ? { ...item, quantity: item.quantity + 1 } : item);
-      }
-      return [...current, { productId, size, quantity: 1 }];
-    });
-    setCartOpen(true);
-  };
-
-  const updateQuantity = (productId, size, change) => {
-    setCartItems((current) =>
-      current
-        .map((item) => item.productId === productId && item.size === size ? { ...item, quantity: Math.max(0, item.quantity + change) } : item)
-        .filter((item) => item.quantity > 0)
-    );
-  };
-
-  const updateCartSize = (productId, previousSize, nextSize) => {
-    setCartItems((current) =>
-      current.map((item) => item.productId === productId && item.size === previousSize ? { ...item, size: nextSize } : item)
-    );
-  };
-
-  const handleCheckout = (event) => {
-    if (checkoutUrl) return;
-    event.preventDefault();
-    setCheckoutNotice(true);
-  };
-
-  return (
-    <main className="cs-store-shell">
-      <div className="cs-announcement"><span>First drop opens Friday 8PM CT</span><button type="button" aria-label="Dismiss announcement"><StoreIcon name="x" size={16} /></button></div>
-      <header className="cs-header">
-        <a href="/charostudios" className="cs-wordmark" aria-label="Charo Studios home">Charo Studios</a>
-        <nav aria-label="Charo Studios navigation"><a href="#drop">Drop</a><a href="#lookbook">Lookbook</a><a href="#archive">Archive</a><a href="mailto:studio@elijahcharo.com">Support</a></nav>
-        <div className="cs-header-actions"><button type="button" className="cs-icon-button" aria-label="Open menu"><StoreIcon name="menu" /></button><button type="button" className="cs-cart-button" onClick={() => setCartOpen(true)}><span>Cart ({cartCount})</span><StoreIcon name="bag" /></button></div>
-      </header>
-
-      <section className="cs-hero" id="top">
-        <div className="cs-hero-copy">
-          <h1>Cut,<br />distressed,<br />numbered</h1>
-          <p>Garments built through process. Every piece is cut, treated, and finished in limited numbers.</p>
-          <div className="cs-hero-actions"><a href="#drop" className="cs-primary-action">Shop the drop <StoreIcon name="arrow" /></a><button type="button" className="cs-secondary-action" onClick={() => setCartOpen(true)}>View cart <StoreIcon name="bag" /></button></div>
-        </div>
-        <div className="cs-hero-editorial" aria-label="Charo Studios garment study">
-          <img src="/charostudios-assets/studio-flare-hoodie.png" alt="" />
-          <div className="cs-hero-edition"><span>Drop 01</span><strong>Numbered run</strong></div>
-        </div>
-      </section>
-
-      <section className="cs-product-drop" id="drop">
-        <div className="cs-section-row"><h2>First Drop</h2><a href="#archive">View all <StoreIcon name="arrow" size={16} /></a></div>
-        <div className="cs-product-grid">
-          {charoProducts.map((product) => (
-            <article className="cs-product-card" key={product.id}>
-              <a className="cs-product-media" href={`#${product.id}`}><img src={product.image} alt={product.alt} /></a>
-              <div className="cs-product-info" id={product.id}><div><h3>{product.name}</h3><p>{product.color}</p></div><strong>{formatStorePrice(product.price)}</strong></div>
-              <div className="cs-product-controls">
-                <label><span>Size</span><select value={selectedSizes[product.id]} onChange={(event) => setSelectedSizes((current) => ({ ...current, [product.id]: event.target.value }))}>{product.sizes.map((size) => <option value={size} key={size}>{size}</option>)}</select></label>
-                <button type="button" onClick={() => addToCart(product.id)}><StoreIcon name="plus" size={17} />Add</button>
-              </div>
-              <span className="cs-product-status">{product.status}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="cs-lookbook" id="lookbook">
-        <div className="cs-lookbook-image cs-lookbook-image-large"><img src="/charostudios-assets/painted-work-pant.png" alt="Painted work pant closeup on concrete." /></div>
-        <div className="cs-lookbook-copy"><h2>Studio wear for late nights and loud rooms</h2><p>Heavy blanks, washed surfaces, and hand-finished distressing built for a first run that feels collected instead of stocked.</p><a href="#drop">Return to drop <StoreIcon name="arrow" size={17} /></a></div>
-        <div className="cs-lookbook-image"><img src="/charostudios-assets/core-logo-tee.png" alt="Bone tee with small abstract chest emblem." /></div>
-      </section>
-
-      <footer className="cs-footer" id="archive"><span>Charo Studios</span><div><a href="/">Elijahcharo.com</a><a href="mailto:studio@elijahcharo.com">Email</a></div></footer>
-
-      <aside className={`cs-cart-drawer${cartOpen ? " is-open" : ""}`} aria-label="Shopping cart">
-        <div className="cs-cart-header"><h2>Your Cart ({cartCount})</h2><button type="button" className="cs-icon-button" onClick={() => setCartOpen(false)} aria-label="Close cart"><StoreIcon name="x" /></button></div>
-        <div className="cs-cart-items">
-          {cartItems.map((item) => {
-            const product = charoProducts.find((entry) => entry.id === item.productId);
-            if (!product) return null;
-            return (
-              <article className="cs-cart-item" key={`${item.productId}-${item.size}`}>
-                <img src={product.image} alt="" />
-                <div className="cs-cart-copy"><div><h3>{product.name}</h3><p>{product.color}</p></div><div className="cs-cart-controls"><label><span>Size</span><select value={item.size} onChange={(event) => updateCartSize(product.id, item.size, event.target.value)}>{product.sizes.map((size) => <option value={size} key={size}>{size}</option>)}</select></label><div className="cs-quantity" aria-label={`${product.name} quantity`}><button type="button" onClick={() => updateQuantity(product.id, item.size, -1)} aria-label={`Remove one ${product.name}`}><StoreIcon name="minus" size={15} /></button><span>{item.quantity}</span><button type="button" onClick={() => updateQuantity(product.id, item.size, 1)} aria-label={`Add one ${product.name}`}><StoreIcon name="plus" size={15} /></button></div></div></div>
-                <strong>{formatStorePrice(product.price * item.quantity)}</strong>
-              </article>
-            );
-          })}
-        </div>
-        <div className="cs-cart-summary"><div><span>Subtotal</span><strong>{formatStorePrice(subtotal)}</strong></div><p>Shipping and taxes calculated at checkout.</p><a className="cs-checkout-button" href={checkoutUrl || "#checkout"} target={checkoutUrl ? "_blank" : undefined} rel={checkoutUrl ? "noreferrer" : undefined} onClick={handleCheckout}><StoreIcon name="lock" />Checkout securely</a>{checkoutNotice ? <p className="cs-checkout-notice">Add a Stripe Payment Link or Checkout Session URL as VITE_STRIPE_CHECKOUT_URL.</p> : null}</div>
-      </aside>
-    </main>
-  );
-}
 
 function PortfolioHome() {
   const [activeProject, setActiveProject] = useState("tasker");
@@ -193,10 +53,11 @@ function PortfolioHome() {
 }
 
 export default function ElijahCharoPortfolio() {
-  const isCharoRoute = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/charostudios";
+  const currentPath = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") || "/" : "/";
+  const isCharoRoute = currentPath === "/charostudios" || currentPath.startsWith("/charostudios/");
   useEffect(() => {
-    document.title = isCharoRoute ? "Charo Studios Drop | Elijah Charo" : "Elijah Charo | Data Engineer & Automation Specialist";
+    document.title = isCharoRoute ? "Charo Studios | Digital Design, Streetwear, Culture" : "Elijah Charo | Data Engineer & Automation Specialist";
   }, [isCharoRoute]);
 
-  return isCharoRoute ? <CharoStudiosStorefront /> : <PortfolioHome />;
+  return isCharoRoute ? <CharoStudiosExperience path={currentPath} /> : <PortfolioHome />;
 }
