@@ -1019,6 +1019,20 @@ body {
   color: #050705;
 }
 
+.cs-hero-actions-row a.cs-button.cs-button-primary,
+.cs-hero-actions-row a.cs-button.cs-button-primary:link,
+.cs-hero-actions-row a.cs-button.cs-button-primary:visited,
+.cs-hero-actions-row a.cs-button.cs-button-primary:hover,
+.cs-hero-actions-row a.cs-button.cs-button-primary:focus-visible {
+  color: #050705 !important;
+}
+
+.cs-hero-actions-row a.cs-button.cs-button-primary svg,
+.cs-hero-actions-row a.cs-button.cs-button-primary path {
+  color: #050705 !important;
+  stroke: #050705 !important;
+}
+
 .cs-button-primary:hover,
 .cs-studio-cart-footer a:hover {
   background: #c8ff78;
