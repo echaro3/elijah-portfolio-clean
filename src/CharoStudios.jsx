@@ -4,82 +4,81 @@ const checkoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL || "";
 
 const liveDrop = {
   id: "the-alien",
-  name: "The Alien Tee",
+  name: "Wemby Alien Tee",
   collection: "Limited Drop 001",
-  price: 74,
-  status: "72 units",
-  color: "Bone wash",
-  image: "/charostudios-assets/core-logo-tee.png",
+  price: 88,
+  status: "222 units",
+  color: "Washed black",
+  image: "/charostudios-assets/wemby-alien-shirt-mockup.webp",
+  detailImage: "/charostudios-assets/wemby-alien-black-shirt.webp",
+  backImage: "/charostudios-assets/wemby-alien-frequency.webp",
+  logoImage: "/charostudios-assets/go-spurs-go-script.webp",
   sizes: ["S", "M", "L", "XL", "XXL"],
   fit: "Oversized heavyweight tee",
   story:
-    "A washed bone shirt built around late-night signal noise, surreal South Texas sky culture, and a small chest mark that feels like evidence instead of branding.",
-  specs: ["7.5oz heavyweight washed cotton", "Oversized fit with dropped shoulder", "Premium DTF print", "Garment-washed bone body", "Numbered neck label concept"],
+    "A washed black shirt built around alien frequency graphics, San Antonio skyline energy, and oversized sports mythology.",
+  specs: ["7.5oz heavyweight washed cotton", "Oversized fit with dropped shoulder", "Premium DTF print", "Washed black body", "Large front graphic"],
 };
 
 const shopDrops = [
   liveDrop,
   {
     id: "court-mirage",
-    name: "Court Mirage Tee",
-    collection: "Studio sample",
+    name: "Alien Frequency Tee",
+    collection: "Concept 002",
     price: 78,
     status: "Concept locked",
     color: "Washed black",
-    tone: "black",
-    print: "MIRAGE",
+    image: "/charostudios-assets/wemby-alien-frequency.webp",
     sizes: ["S", "M", "L", "XL", "XXL"],
     fit: "Oversized graphic tee",
   },
   {
     id: "river-signal",
-    name: "River Signal Tee",
-    collection: "Studio sample",
+    name: "Alien Poster Tee",
+    collection: "Concept 003",
     price: 76,
     status: "Vote-to-drop",
-    color: "Dust grey",
-    tone: "grey",
-    print: "210 SIGNAL",
+    color: "Faded black",
+    image: "/charostudios-assets/wemby-alien-black-shirt.webp",
     sizes: ["S", "M", "L", "XL"],
     fit: "Washed heavyweight tee",
   },
   {
     id: "sa-static",
-    name: "SA Static Tee",
+    name: "Go Spurs Go Script Tee",
     collection: "Digital study",
     price: 72,
     status: "Unreleased",
-    color: "Faded asphalt",
-    tone: "asphalt",
-    print: "STATIC",
+    color: "Black",
+    image: "/charostudios-assets/go-spurs-go-script.webp",
     sizes: ["S", "M", "L", "XL"],
     fit: "Boxy streetwear tee",
   },
   {
     id: "underground-concept",
-    name: "Underground Concepts Tee",
+    name: "Signal Portrait Tee",
     collection: "Studio sample",
     price: 80,
     status: "Sample only",
-    color: "Oxide wash",
-    tone: "oxide",
-    print: "UNDERGROUND",
+    color: "Washed black",
+    image: "/charostudios-assets/wemby-alien-frequency.webp",
     sizes: ["M", "L", "XL"],
     fit: "Heavy oversized tee",
   },
 ];
 
 const archiveDrops = [
-  { name: "Studio Flare Hoodie", season: "Archive 000", status: "Sold out", image: "/charostudios-assets/studio-flare-hoodie.png" },
-  { name: "Painted Work Pant", season: "Archive 000", status: "Sold out", image: "/charostudios-assets/painted-work-pant.png" },
-  { name: "Numbered Trucker", season: "Archive 000", status: "Sold out", image: "/charostudios-assets/numbered-trucker.png" },
+  { name: "Wemby Alien Tee", season: "Drop 001", status: "Active sample", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp" },
+  { name: "Alien Frequency", season: "Concept 002", status: "Unreleased", image: "/charostudios-assets/wemby-alien-frequency.webp" },
+  { name: "Go Spurs Go Script", season: "Concept 003", status: "Unreleased", image: "/charostudios-assets/go-spurs-go-script.webp" },
 ];
 
 const conceptDrops = [
-  { id: "signal", name: "Signal Runner", note: "Surreal sports culture with distressed arena graphics.", tone: "black", print: "RUNNER", votes: 42 },
-  { id: "river", name: "River Static", note: "Washed cotton study based on San Antonio night reflections.", tone: "grey", print: "RIVER", votes: 35 },
-  { id: "alien", name: "Alien Summer", note: "Heat, dust, low-resolution sky scans, and oversized type.", tone: "bone", print: "ALIEN", votes: 51 },
-  { id: "south", name: "Southside Broadcast", note: "A loud back graphic built like a pirate signal.", tone: "oxide", print: "BROADCAST", votes: 28 },
+  { id: "signal", name: "Alien Frequency", note: "Transparent graphic study with skyline, orbital rings, and black/green glow.", image: "/charostudios-assets/wemby-alien-frequency.webp", votes: 42 },
+  { id: "river", name: "Full Poster Graphic", note: "Maximal chrome type, San Antonio coordinates, and oversized alien portrait.", image: "/charostudios-assets/wemby-alien-black-shirt.webp", votes: 35 },
+  { id: "alien", name: "Black Tee Mockup", note: "Current front-print direction on washed black cotton.", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp", votes: 51 },
+  { id: "south", name: "Go Spurs Go Script", note: "A cleaner script mark for sleeve, back neck, or secondary tee placement.", image: "/charostudios-assets/go-spurs-go-script.webp", votes: 28 },
 ];
 
 const navItems = [
@@ -220,7 +219,7 @@ function HomePage({ onAdd }) {
           href="/charostudios/drop/the-alien"
           className="cs-hero-product"
           style={{ "--tilt-x": `${tilt.y}deg`, "--tilt-y": `${tilt.x}deg` }}
-          aria-label="View The Alien Tee"
+          aria-label="View Wemby Alien Tee"
         >
           <ProductVisual product={liveDrop} mode="hero" />
           <div className="cs-hero-product-label">
@@ -232,8 +231,8 @@ function HomePage({ onAdd }) {
 
       <section className="cs-drop-strip">
         <div>
-          <h2>Underground Concepts</h2>
-          <p>Limited graphics, oversized statement pieces, and digital art studies from San Antonio.</p>
+          <h2>Alien Frequency</h2>
+          <p>Black cotton, toxic green glow, oversized statement graphics, and San Antonio sports mythology.</p>
         </div>
         <a href="/charostudios/concepts" className="cs-text-link">
           Vote on concepts <StudioIcon name="arrow" size={16} />
@@ -333,15 +332,11 @@ function DropPage({ onAdd }) {
         </div>
         <div className="cs-drop-mockups">
           <figure>
-            <ProductVisual product={liveDrop} mode="hero" />
+            <img src={liveDrop.image} alt="Wemby Alien Tee front mockup on black shirt" loading="eager" />
             <figcaption>Front mockup</figcaption>
           </figure>
           <figure className="cs-back-mock">
-            <div>
-              <span>DROP 001</span>
-              <strong>THE ALIEN</strong>
-              <small>SA-210 / LIMITED GRAPHICS</small>
-            </div>
+            <img src={liveDrop.backImage} alt="Alien Frequency back graphic concept" loading="lazy" />
             <figcaption>Back graphic study</figcaption>
           </figure>
         </div>
@@ -349,17 +344,17 @@ function DropPage({ onAdd }) {
 
       <div className="cs-detail-grid">
         <figure className="cs-detail-shot is-print">
-          <img src={liveDrop.image} alt="Close up of The Alien Tee chest print" />
+          <img src={liveDrop.detailImage} alt="Close up of Wemby Alien graphic artwork" />
           <figcaption>Print detail</figcaption>
         </figure>
         <figure className="cs-detail-shot is-fit">
-          <img src={liveDrop.image} alt="Oversized bone tee body and sleeve shape" />
-          <figcaption>Oversized body</figcaption>
+          <img src={liveDrop.logoImage} alt="Go Spurs Go script artwork" />
+          <figcaption>Secondary mark</figcaption>
         </figure>
         <div className="cs-story-panel">
           <h2>Story</h2>
           <p>
-            Charo Studios explores oversized graphics, surreal sports culture, and statement-driven streetwear inspired by San Antonio. The Alien Tee is the first artifact from that world: quiet from far away, strange when you get close.
+            Charo Studios explores oversized graphics, surreal sports culture, and statement-driven streetwear inspired by San Antonio. The Wemby Alien Tee is the first artifact from that world: loud from far away, sharper when you get close.
           </p>
         </div>
       </div>
