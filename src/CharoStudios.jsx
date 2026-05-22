@@ -29,7 +29,7 @@ const shopDrops = [
     price: 78,
     status: "Concept locked",
     color: "Washed black",
-    image: "/charostudios-assets/wemby-alien-frequency.webp",
+    image: "/charostudios-assets/wemby-alien-frequency-tee-mockup.webp",
     sizes: ["S", "M", "L", "XL", "XXL"],
     fit: "Oversized graphic tee",
   },
@@ -40,7 +40,7 @@ const shopDrops = [
     price: 76,
     status: "Vote-to-drop",
     color: "Faded black",
-    image: "/charostudios-assets/wemby-alien-black-shirt.webp",
+    image: "/charostudios-assets/wemby-alien-poster-tee-mockup.webp",
     sizes: ["S", "M", "L", "XL"],
     fit: "Washed heavyweight tee",
   },
@@ -51,7 +51,7 @@ const shopDrops = [
     price: 72,
     status: "Unreleased",
     color: "Black",
-    image: "/charostudios-assets/go-spurs-go-script.webp",
+    image: "/charostudios-assets/go-spurs-go-script-tee-mockup.webp",
     sizes: ["S", "M", "L", "XL"],
     fit: "Boxy streetwear tee",
   },
@@ -62,7 +62,7 @@ const shopDrops = [
     price: 80,
     status: "Sample only",
     color: "Washed black",
-    image: "/charostudios-assets/wemby-alien-frequency.webp",
+    image: "/charostudios-assets/wemby-alien-frequency-tee-mockup.webp",
     sizes: ["M", "L", "XL"],
     fit: "Heavy oversized tee",
   },
@@ -70,15 +70,15 @@ const shopDrops = [
 
 const archiveDrops = [
   { name: "Wemby Alien Tee", season: "Drop 001", status: "Active sample", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp" },
-  { name: "Alien Frequency", season: "Concept 002", status: "Unreleased", image: "/charostudios-assets/wemby-alien-frequency.webp" },
-  { name: "Go Spurs Go Script", season: "Concept 003", status: "Unreleased", image: "/charostudios-assets/go-spurs-go-script.webp" },
+  { name: "Alien Frequency Tee", season: "Concept 002", status: "Unreleased", image: "/charostudios-assets/wemby-alien-frequency-tee-mockup.webp" },
+  { name: "Go Spurs Go Script Tee", season: "Concept 003", status: "Unreleased", image: "/charostudios-assets/go-spurs-go-script-tee-mockup.webp" },
 ];
 
 const conceptDrops = [
-  { id: "signal", name: "Alien Frequency", note: "Transparent graphic study with skyline, orbital rings, and black/green glow.", image: "/charostudios-assets/wemby-alien-frequency.webp", votes: 42 },
-  { id: "river", name: "Full Poster Graphic", note: "Maximal chrome type, San Antonio coordinates, and oversized alien portrait.", image: "/charostudios-assets/wemby-alien-black-shirt.webp", votes: 35 },
+  { id: "signal", name: "Alien Frequency Tee", note: "Rendered on a washed black tee with skyline, orbital rings, and black/green glow.", image: "/charostudios-assets/wemby-alien-frequency-tee-mockup.webp", votes: 42 },
+  { id: "river", name: "Full Poster Tee", note: "Maximal chrome type, San Antonio coordinates, and oversized alien portrait on black cotton.", image: "/charostudios-assets/wemby-alien-poster-tee-mockup.webp", votes: 35 },
   { id: "alien", name: "Black Tee Mockup", note: "Current front-print direction on washed black cotton.", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp", votes: 51 },
-  { id: "south", name: "Go Spurs Go Script", note: "A cleaner script mark for sleeve, back neck, or secondary tee placement.", image: "/charostudios-assets/go-spurs-go-script.webp", votes: 28 },
+  { id: "south", name: "Go Spurs Go Script Tee", note: "Script mark mocked on a black tee for sleeve, back neck, or alternate front placement.", image: "/charostudios-assets/go-spurs-go-script-tee-mockup.webp", votes: 28 },
 ];
 
 const navItems = [
