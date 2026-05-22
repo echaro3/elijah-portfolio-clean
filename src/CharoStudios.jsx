@@ -35,7 +35,7 @@ const shopDrops = [
   },
   {
     id: "river-signal",
-    name: "Alien Poster Tee",
+    name: "Wemby Minimal Shades Tee",
     collection: "Concept 003",
     price: 76,
     status: "Vote-to-drop",
@@ -57,7 +57,7 @@ const shopDrops = [
   },
   {
     id: "underground-concept",
-    name: "Signal Portrait Tee",
+    name: "Archive Signal Tee",
     collection: "Studio sample",
     price: 80,
     status: "Sample only",
@@ -71,13 +71,14 @@ const shopDrops = [
 const archiveDrops = [
   { name: "Wemby Alien Tee", season: "Drop 001", status: "Active sample", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp" },
   { name: "Alien Frequency Tee", season: "Concept 002", status: "Unreleased", image: "/charostudios-assets/wemby-alien-frequency-tee-mockup.webp" },
+  { name: "Wemby Minimal Shades Tee", season: "Concept 003", status: "Vote-to-drop", image: "/charostudios-assets/wemby-alien-poster-tee-mockup.webp" },
   { name: "Go Spurs Go Script Tee", season: "Concept 003", status: "Unreleased", image: "/charostudios-assets/go-spurs-go-script-tee-mockup.webp" },
 ];
 
 const conceptDrops = [
   { id: "signal", name: "Alien Frequency Tee", note: "Rendered on a washed black tee with skyline, orbital rings, and black/green glow.", image: "/charostudios-assets/wemby-alien-frequency-tee-mockup.webp", votes: 42 },
-  { id: "river", name: "Full Poster Tee", note: "Maximal chrome type, San Antonio coordinates, and oversized alien portrait on black cotton.", image: "/charostudios-assets/wemby-alien-poster-tee-mockup.webp", votes: 35 },
-  { id: "alien", name: "Black Tee Mockup", note: "Current front-print direction on washed black cotton.", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp", votes: 51 },
+  { id: "river", name: "Wemby Minimal Shades Tee", note: "Minimal portrait graphic on heavyweight washed black cotton.", image: "/charostudios-assets/wemby-alien-poster-tee-mockup.webp", votes: 35 },
+  { id: "alien", name: "Wemby Alien Tee", note: "Current front-print direction on washed black cotton.", image: "/charostudios-assets/wemby-alien-shirt-mockup.webp", votes: 51 },
   { id: "south", name: "Go Spurs Go Script Tee", note: "Script mark mocked on a black tee for sleeve, back neck, or alternate front placement.", image: "/charostudios-assets/go-spurs-go-script-tee-mockup.webp", votes: 28 },
 ];
 
@@ -244,7 +245,7 @@ function HomePage({ onAdd }) {
           <h2>Shop Drop 001</h2>
           <a href="/charostudios/shop">All pieces</a>
         </div>
-        <ProductGrid products={shopDrops.slice(0, 3)} onAdd={onAdd} compact />
+        <ProductGrid products={shopDrops} onAdd={onAdd} compact />
       </section>
     </>
   );
