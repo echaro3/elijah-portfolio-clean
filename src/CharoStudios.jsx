@@ -567,11 +567,32 @@ export function CharoStudiosExperience({ path }) {
       <StudioHeader activeRoute={activeRoute} cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
       {content}
       <footer className="cs-site-footer">
-        <span>CHARO STUDIOS</span>
-        <div>
-          <a href="/charostudios/shop">Shop</a>
-          <a href="/charostudios/concepts">Concepts</a>
-          <a href="/">Elijahcharo.com</a>
+        <div className="cs-footer-marquee" aria-hidden="true">
+          <span>CHARO STUDIOS / UNDERGROUND CONCEPTS / SAN ANTONIO, TX / LIMITED GRAPHICS / </span>
+          <span>CHARO STUDIOS / UNDERGROUND CONCEPTS / SAN ANTONIO, TX / LIMITED GRAPHICS / </span>
+        </div>
+        <div className="cs-footer-grid">
+          <div className="cs-footer-brand">
+            <strong>CHARO<br />STUDIOS</strong>
+            <p>Oversized graphics, surreal sports culture, and statement-driven streetwear.</p>
+          </div>
+          <div className="cs-footer-links">
+            <p>Explore</p>
+            <a href="/charostudios/shop">Shop</a>
+            <a href="/charostudios/concepts">Concepts</a>
+            <a href="/charostudios/archive">Archive</a>
+          </div>
+          <div className="cs-footer-links">
+            <p>Studio</p>
+            <a href="/charostudios/about">About</a>
+            <a href="/charostudios/drop/the-alien">Drop 001</a>
+            <a href="/">Elijahcharo.com</a>
+          </div>
+        </div>
+        <div className="cs-footer-bottom">
+          <span>Based out of San Antonio, TX</span>
+          <span>Digital Design / Streetwear / Culture</span>
+          <span>© 2026 Charo Studios</span>
         </div>
       </footer>
       <CartDrawer isOpen={cartOpen} items={cartItems} onClose={() => setCartOpen(false)} onQuantityChange={updateQuantity} />

@@ -842,15 +842,18 @@ body {
 
 .cs-site-header {
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 60;
   display: grid;
   grid-template-columns: minmax(140px, 0.8fr) minmax(0, auto) minmax(112px, 0.8fr);
   align-items: center;
   min-height: 72px;
-  border-bottom: 1px solid rgba(245, 241, 233, 0.14);
-  background: rgba(5, 5, 5, 0.86);
-  backdrop-filter: blur(18px);
+  margin: 12px 16px 0;
+  border: 1px solid rgba(245, 241, 233, 0.16);
+  border-radius: 6px;
+  background: rgba(5, 7, 5, 0.8);
+  backdrop-filter: blur(22px) saturate(1.15);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.34);
   padding: 0 28px;
 }
 
@@ -1201,9 +1204,17 @@ body {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.035);
   padding: 12px;
+  transition: border-color 240ms ease, box-shadow 240ms ease, transform 240ms ease;
+}
+
+.cs-product-tile:hover {
+  border-color: rgba(156, 255, 66, 0.36);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.3);
+  transform: translateY(-6px);
 }
 
 .cs-product-visual-link {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 340px;
@@ -1214,18 +1225,33 @@ body {
   overflow: hidden;
 }
 
+.cs-product-visual-link::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg, transparent 32%, rgba(255, 255, 255, 0.11) 49%, transparent 66%);
+  content: "";
+  pointer-events: none;
+  transform: translateX(-140%);
+  transition: transform 620ms ease;
+}
+
 .cs-product-visual-link img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   filter: saturate(0.84) contrast(1.06);
-  transition: transform 240ms ease, filter 240ms ease;
+  transform-origin: center;
+  transition: transform 520ms cubic-bezier(0.2, 0.7, 0.2, 1), filter 320ms ease;
 }
 
 .cs-product-tile:hover .cs-product-visual-link img,
 .cs-product-tile:hover .cs-tee-visual {
-  transform: scale(1.025);
+  transform: scale(1.07) rotate(-0.8deg);
   filter: saturate(0.95) contrast(1.1);
+}
+
+.cs-product-tile:hover .cs-product-visual-link::after {
+  transform: translateX(140%);
 }
 
 .cs-product-meta {
@@ -1765,25 +1791,99 @@ body {
 }
 
 .cs-site-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
+  display: grid;
+  gap: 0;
   border-top: 1px solid rgba(245, 241, 233, 0.14);
+  background: #050705;
   color: rgba(245, 241, 233, 0.62);
-  padding: 28px 32px;
   font-size: 0.82rem;
   font-weight: 950;
   text-transform: uppercase;
+  overflow: hidden;
 }
 
-.cs-site-footer div {
+.cs-footer-marquee {
   display: flex;
+  width: max-content;
+  border-bottom: 1px solid rgba(245, 241, 233, 0.14);
+  color: #9cff42;
+  font-size: clamp(1.5rem, 3vw, 3.2rem);
+  line-height: 1;
+  white-space: nowrap;
+  animation: cs-marquee 28s linear infinite;
+  padding: 18px 0;
+}
+
+.cs-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: clamp(32px, 6vw, 100px);
+  padding: 52px 32px 46px;
+}
+
+.cs-footer-brand strong {
+  display: block;
+  color: #ffffff;
+  font-size: clamp(2.8rem, 6vw, 6.6rem);
+  line-height: 0.84;
+}
+
+.cs-footer-brand p {
+  max-width: 510px;
+  margin: 22px 0 0;
+  color: rgba(245, 241, 233, 0.66);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.cs-footer-links {
+  display: grid;
+  align-content: start;
+  gap: 13px;
+  min-width: 120px;
+}
+
+.cs-footer-links p {
+  margin: 0 0 5px;
+  color: #9cff42;
+  font-size: 0.72rem;
+}
+
+.cs-footer-bottom {
+  display: flex;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 18px;
+  border-top: 1px solid rgba(245, 241, 233, 0.14);
+  padding: 18px 32px;
 }
 
 .cs-site-footer a:hover {
   color: #ffffff;
+}
+
+.cs-cinematic-hero,
+.cs-drop-strip,
+.cs-home-shop,
+.cs-page-shell {
+  animation: cs-reveal 620ms ease both;
+}
+
+@keyframes cs-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes cs-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cs-studio-cart {
@@ -1974,6 +2074,7 @@ body {
     min-height: auto;
     grid-template-columns: 1fr auto;
     gap: 14px;
+    margin: 8px 8px 0;
     padding: 14px 16px;
   }
 
@@ -2078,9 +2179,18 @@ body {
   }
 
   .cs-site-footer {
-    flex-direction: column;
-    padding-right: 16px;
-    padding-left: 16px;
+    padding: 0;
+  }
+
+  .cs-footer-grid {
+    grid-template-columns: 1fr;
+    gap: 26px;
+    padding: 42px 16px 34px;
+  }
+
+  .cs-footer-bottom {
+    display: grid;
+    padding: 16px;
   }
 
   .cs-studio-cart-item {
@@ -2094,6 +2204,22 @@ body {
 
   .cs-studio-cart-item > strong {
     grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-footer-marquee,
+  .cs-cinematic-hero,
+  .cs-drop-strip,
+  .cs-home-shop,
+  .cs-page-shell {
+    animation: none;
+  }
+
+  .cs-product-tile,
+  .cs-product-visual-link img,
+  .cs-product-visual-link::after {
+    transition: none;
   }
 }
 
