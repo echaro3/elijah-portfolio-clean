@@ -415,6 +415,24 @@ const PELL_ENROLLMENT_OPTIONS: {
   { value: "full", label: "Full Pell", factor: 1 },
 ];
 
+const RATING_OPTIONS: { value: Rating; label: string }[] = [
+  { value: 80, label: "80%" },
+  { value: 90, label: "90%" },
+  { value: 100, label: "100%" },
+];
+
+const PELL_CASE_OPTIONS: { value: PellCaseId; label: string }[] = Object.entries(PELL_CASES).map(
+  ([value, pellCase]) => ({
+    value: value as PellCaseId,
+    label: `${pellCase.label} - ${formatMoney(pellCase.termAmount)}/term`,
+  }),
+);
+
+const UCX_MODE_OPTIONS: { value: UcxMode; label: string }[] = [
+  { value: "off", label: "Do not rely on UCX" },
+  { value: "ifEligible", label: "Model UCX if eligible" },
+];
+
 const ACTION_PLAN = [
   {
     month: "August 2026",
@@ -906,6 +924,158 @@ function AnimatedNumber({
   );
 }
 
+type SelectOption<T extends string | number> = {
+  value: T;
+  label: string;
+};
+
+type SelectControlProps<T extends string | number> = {
+  label: string;
+  value: T;
+  options: SelectOption<T>[];
+  onChange: (value: T) => void;
+};
+
+function SelectControl<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+}: SelectControlProps<T>) {
+  const fieldId = React.useId();
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const [isOpen, setIsOpen] = React.useState(false);
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => Object.is(option.value, value)),
+  );
+  const [activeIndex, setActiveIndex] = React.useState(selectedIndex);
+  const selectedOption = options[selectedIndex] ?? options[0];
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setActiveIndex(selectedIndex);
+    }
+  }, [isOpen, selectedIndex]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [isOpen]);
+
+  const chooseOption = (nextIndex: number) => {
+    const nextOption = options[nextIndex];
+
+    if (!nextOption) {
+      return;
+    }
+
+    onChange(nextOption.value);
+    setIsOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const moveActiveOption = (direction: number) => {
+    setActiveIndex((current) => (current + direction + options.length) % options.length);
+  };
+
+  return (
+    <div className={`select-field${isOpen ? " is-open" : ""}`} ref={rootRef}>
+      <span className="select-field-label" id={`${fieldId}-label`}>
+        {label}
+      </span>
+      <button
+        aria-controls={`${fieldId}-listbox`}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-labelledby={`${fieldId}-label ${fieldId}-value`}
+        className="themed-select-trigger"
+        onClick={() => setIsOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            if (!isOpen) {
+              setIsOpen(true);
+              setActiveIndex(selectedIndex);
+              return;
+            }
+            moveActiveOption(1);
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!isOpen) {
+              setIsOpen(true);
+              setActiveIndex(selectedIndex);
+              return;
+            }
+            moveActiveOption(-1);
+          }
+
+          if (event.key === "Home" && isOpen) {
+            event.preventDefault();
+            setActiveIndex(0);
+          }
+
+          if (event.key === "End" && isOpen) {
+            event.preventDefault();
+            setActiveIndex(options.length - 1);
+          }
+
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (isOpen) {
+              chooseOption(activeIndex);
+              return;
+            }
+            setIsOpen(true);
+          }
+
+          if (event.key === "Escape" && isOpen) {
+            event.preventDefault();
+            setIsOpen(false);
+          }
+        }}
+        ref={buttonRef}
+        type="button"
+      >
+        <span id={`${fieldId}-value`}>{selectedOption?.label}</span>
+        <span className="themed-select-arrow" aria-hidden="true" />
+      </button>
+      {isOpen ? (
+        <div className="themed-select-list" id={`${fieldId}-listbox`} role="listbox">
+          {options.map((option, index) => (
+            <button
+              aria-selected={Object.is(option.value, value)}
+              className={index === activeIndex ? "is-active" : ""}
+              id={`${fieldId}-option-${index}`}
+              key={String(option.value)}
+              onClick={() => chooseOption(index)}
+              onMouseEnter={() => setActiveIndex(index)}
+              role="option"
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function App() {
   const shellRef = React.useRef<HTMLElement | null>(null);
   const prefersReducedMotion = useReducedMotionPreference();
@@ -1166,17 +1336,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             <Landmark aria-hidden="true" />
             Benefits
           </legend>
-          <label>
-            <span>VA rating</span>
-            <select
-              value={settings.rating}
-              onChange={(event) => onSettingChange("rating", Number(event.target.value) as Rating)}
-            >
-              <option value={80}>80%</option>
-              <option value={90}>90%</option>
-              <option value={100}>100%</option>
-            </select>
-          </label>
+          <SelectControl
+            label="VA rating"
+            value={settings.rating}
+            options={RATING_OPTIONS}
+            onChange={(value) => onSettingChange("rating", value)}
+          />
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -1185,19 +1350,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             />
             <span>Include SMC-K ({DETAILED_MONEY_FORMATTER.format(SMC_K_RATE)}/mo)</span>
           </label>
-          <label>
-            <span>VA decision / catch-up month</span>
-            <select
-              value={settings.vaStart}
-              onChange={(event) => onSettingChange("vaStart", event.target.value as VaStart)}
-            >
-              {VA_START_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="VA decision / catch-up month"
+            value={settings.vaStart}
+            options={VA_START_OPTIONS}
+            onChange={(value) => onSettingChange("vaStart", value)}
+          />
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -1257,32 +1415,18 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               onChange={(event) => onSettingChange("mgibMonthlyRate", Number(event.target.value))}
             />
           </label>
-          <label>
-            <span>Pell case</span>
-            <select
-              value={settings.pellCase}
-              onChange={(event) => onSettingChange("pellCase", event.target.value as PellCaseId)}
-            >
-              {Object.entries(PELL_CASES).map(([key, pellCase]) => (
-                <option key={key} value={key}>
-                  {pellCase.label} - {formatMoney(pellCase.termAmount)}/term
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Pell enrollment status</span>
-            <select
-              value={settings.pellEnrollment}
-              onChange={(event) => onSettingChange("pellEnrollment", event.target.value as PellEnrollment)}
-            >
-              {PELL_ENROLLMENT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="Pell case"
+            value={settings.pellCase}
+            options={PELL_CASE_OPTIONS}
+            onChange={(value) => onSettingChange("pellCase", value)}
+          />
+          <SelectControl
+            label="Pell enrollment status"
+            value={settings.pellEnrollment}
+            options={PELL_ENROLLMENT_OPTIONS}
+            onChange={(value) => onSettingChange("pellEnrollment", value)}
+          />
           <div className="inline-result">
             <span>MGIB and Pell posture</span>
             <strong>
@@ -1316,19 +1460,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             <BriefcaseBusiness aria-hidden="true" />
             Work bridge
           </legend>
-          <label>
-            <span>Civilian work</span>
-            <select
-              value={settings.workType}
-              onChange={(event) => onSettingChange("workType", event.target.value as WorkType)}
-            >
-              {WORK_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="Civilian work"
+            value={settings.workType}
+            options={WORK_OPTIONS}
+            onChange={(value) => onSettingChange("workType", value)}
+          />
           <div className="segmented-label">Civilian pay basis</div>
           <div className="segmented-control two-up" role="group" aria-label="Civilian pay basis">
             <button
@@ -1388,48 +1525,25 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </label>
           )}
           {settings.workType === "contract" ? (
-            <label>
-              <span>Contract ends</span>
-              <select
-                value={settings.contractEnd}
-                onChange={(event) =>
-                  onSettingChange("contractEnd", event.target.value as ContractEnd)
-                }
-              >
-                {CONTRACT_END_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectControl
+              label="Contract ends"
+              value={settings.contractEnd}
+              options={CONTRACT_END_OPTIONS}
+              onChange={(value) => onSettingChange("contractEnd", value)}
+            />
           ) : null}
-          <label>
-            <span>Tax treatment</span>
-            <select
-              value={settings.payrollType}
-              onChange={(event) => onSettingChange("payrollType", event.target.value as PayrollType)}
-            >
-              {PAYROLL_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Filing status</span>
-            <select
-              value={settings.filingStatus}
-              onChange={(event) => onSettingChange("filingStatus", event.target.value as FilingStatus)}
-            >
-              {FILING_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="Tax treatment"
+            value={settings.payrollType}
+            options={PAYROLL_TYPE_OPTIONS}
+            onChange={(value) => onSettingChange("payrollType", value)}
+          />
+          <SelectControl
+            label="Filing status"
+            value={settings.filingStatus}
+            options={FILING_STATUS_OPTIONS}
+            onChange={(value) => onSettingChange("filingStatus", value)}
+          />
           <label>
             <span>Pre-tax deductions/mo</span>
             <input
@@ -1514,16 +1628,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               Budget equiv.
             </button>
           </div>
-          <label>
-            <span>UCX model</span>
-            <select
-              value={settings.ucxMode}
-              onChange={(event) => onSettingChange("ucxMode", event.target.value as UcxMode)}
-            >
-              <option value="off">Do not rely on UCX</option>
-              <option value="ifEligible">Model UCX if eligible</option>
-            </select>
-          </label>
+          <SelectControl
+            label="UCX model"
+            value={settings.ucxMode}
+            options={UCX_MODE_OPTIONS}
+            onChange={(value) => onSettingChange("ucxMode", value)}
+          />
           <label>
             <span>UCX weekly amount</span>
             <input
@@ -1593,21 +1703,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               onChange={(event) => onSettingChange("finalMilitaryPay", Number(event.target.value))}
             />
           </label>
-          <label>
-            <span>Final pay timing</span>
-            <select
-              value={settings.finalMilitaryPayMonth}
-              onChange={(event) =>
-                onSettingChange("finalMilitaryPayMonth", event.target.value as FinalPayMonth)
-              }
-            >
-              {FINAL_PAY_MONTH_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="Final pay timing"
+            value={settings.finalMilitaryPayMonth}
+            options={FINAL_PAY_MONTH_OPTIONS}
+            onChange={(value) => onSettingChange("finalMilitaryPayMonth", value)}
+          />
           <label>
             <span>Temporary DFAS deductions across next 2 checks</span>
             <input

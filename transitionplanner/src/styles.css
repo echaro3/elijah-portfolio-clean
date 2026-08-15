@@ -162,6 +162,18 @@ a {
   }
 }
 
+@keyframes dropdown-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .planner-shell {
   display: grid;
   gap: 22px;
@@ -633,20 +645,23 @@ label {
 
 label > span,
 .segmented-label,
-.checkbox-row span {
+.checkbox-row span,
+.select-field-label {
   transition:
     color var(--motion-fast) var(--ease-standard),
     text-shadow var(--motion-fast) var(--ease-standard);
 }
 
 label:focus-within > span,
-.checkbox-row:hover span {
+.checkbox-row:hover span,
+.select-field:focus-within .select-field-label {
   color: var(--muted-strong);
   text-shadow: 0 0 16px rgba(76, 239, 255, 0.12);
 }
 
 label > span,
-.segmented-label {
+.segmented-label,
+.select-field-label {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 850;
@@ -655,7 +670,8 @@ label > span,
 }
 
 select,
-input[type="number"] {
+input[type="number"],
+.themed-select-trigger {
   width: 100%;
   min-height: 42px;
   border: 1px solid rgba(126, 214, 246, 0.28);
@@ -674,12 +690,15 @@ input[type="number"] {
 }
 
 select:hover,
-input[type="number"]:hover {
+input[type="number"]:hover,
+.themed-select-trigger:hover {
   border-color: rgba(76, 239, 255, 0.5);
 }
 
 select:focus,
-input[type="number"]:focus {
+input[type="number"]:focus,
+.themed-select-trigger:focus-visible,
+.select-field.is-open .themed-select-trigger {
   border-color: rgba(76, 239, 255, 0.86);
   box-shadow:
     inset 0 0 0 1px rgba(76, 239, 255, 0.18),
@@ -687,8 +706,141 @@ input[type="number"]:focus {
   transform: translateY(-1px);
 }
 
+.select-field {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.select-field.is-open {
+  z-index: 40;
+}
+
+.themed-select-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-strong);
+  text-align: left;
+}
+
+.themed-select-trigger span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.themed-select-arrow {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.92;
+  transform: translateY(-2px) rotate(45deg);
+  transition:
+    transform var(--motion-fast) var(--ease-emphasized),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.select-field.is-open .themed-select-arrow {
+  color: var(--teal);
+  transform: translateY(2px) rotate(225deg);
+}
+
+.themed-select-list {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  left: 0;
+  z-index: 50;
+  display: grid;
+  gap: 4px;
+  max-height: 228px;
+  overflow-y: auto;
+  border: 1px solid rgba(76, 239, 255, 0.44);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(13, 31, 50, 0.98), rgba(4, 12, 22, 0.98));
+  padding: 6px;
+  box-shadow: var(--shadow), 0 0 30px rgba(76, 239, 255, 0.14);
+  scrollbar-color: rgba(76, 239, 255, 0.46) rgba(6, 17, 31, 0.92);
+  backdrop-filter: blur(12px);
+  animation: dropdown-open var(--motion-fast) var(--ease-emphasized) both;
+}
+
+.themed-select-list button {
+  position: relative;
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(7, 17, 30, 0.3);
+  color: var(--ink);
+  padding: 8px 10px;
+  text-align: left;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasized);
+}
+
+.themed-select-list button:hover,
+.themed-select-list button.is-active {
+  border-color: rgba(76, 239, 255, 0.36);
+  background: rgba(24, 76, 99, 0.72);
+  color: var(--ink-strong);
+  box-shadow: inset 3px 0 0 rgba(76, 239, 255, 0.55);
+}
+
+.themed-select-list button[aria-selected="true"] {
+  border-color: rgba(76, 239, 255, 0.62);
+  background:
+    linear-gradient(180deg, rgba(30, 125, 156, 0.66), rgba(9, 38, 55, 0.96));
+  color: var(--ink-strong);
+  box-shadow:
+    inset 3px 0 0 rgba(76, 239, 255, 0.85),
+    0 0 16px rgba(76, 239, 255, 0.08);
+}
+
 select {
   color-scheme: dark;
+  background-color: #06111f;
+}
+
+select option,
+select optgroup {
+  background-color: #06111f;
+  color: var(--ink);
+}
+
+select option {
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+select option:checked {
+  background:
+    linear-gradient(180deg, rgba(33, 177, 214, 0.36), rgba(10, 42, 58, 0.96)) !important;
+  color: var(--ink-strong) !important;
+  box-shadow: inset 0 0 0 999px rgba(15, 65, 87, 0.96) !important;
+}
+
+select option:hover,
+select option:focus {
+  background-color: #123348 !important;
+  color: var(--ink-strong) !important;
+  box-shadow: inset 0 0 0 999px rgba(18, 51, 72, 0.96) !important;
+}
+
+select option:disabled {
+  color: var(--muted);
 }
 
 input[type="range"] {
@@ -1641,6 +1793,7 @@ input[type="range"] {
 
   select,
   input[type="number"],
+  .themed-select-trigger,
   .segmented-control button {
     min-height: 44px;
     font-size: 16px;
