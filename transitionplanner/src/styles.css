@@ -851,6 +851,8 @@ input[type="range"] {
 }
 
 .income-chart {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: repeat(12, minmax(42px, 1fr));
   gap: 9px;
@@ -860,6 +862,7 @@ input[type="range"] {
 
 .stack-column {
   position: relative;
+  z-index: 1;
   display: grid;
   grid-template-rows: 230px auto auto;
   gap: 7px;
@@ -872,6 +875,7 @@ input[type="range"] {
 
 .stack-column:hover,
 .stack-column.is-month-focused {
+  z-index: 12;
   filter: brightness(1.12);
   transform: translateY(-2px);
 }
@@ -947,7 +951,7 @@ input[type="range"] {
   position: absolute;
   right: 50%;
   bottom: 72px;
-  z-index: 6;
+  z-index: 20;
   display: grid;
   gap: 5px;
   min-width: 178px;
