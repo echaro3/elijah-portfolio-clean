@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/transitionplanner",
+      "destination": "https://financial-transition-planner.vercel.app/transitionplanner"
+    },
+    {
+      "source": "/transitionplanner/",
+      "destination": "https://financial-transition-planner.vercel.app/transitionplanner"
+    },
+    {
+      "source": "/transitionplanner/:path*",
+      "destination": "https://financial-transition-planner.vercel.app/transitionplanner/:path*"
+    },
+    {
       "source": "/charostudios",
       "destination": "/"
     },

@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/transitionplanner/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
+      "source": "/transitionplanner",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/transitionplanner/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/transitionplanner/:path*",
+      "destination": "/index.html"
+    }
+  ]
+}
