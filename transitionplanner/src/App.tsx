@@ -708,14 +708,217 @@ function normalizePlannerState(value: unknown): PlannerState | null {
   };
 }
 
+const ReducedMotionContext = React.createContext(false);
+
+function useReducedMotionPreference() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
+
+  React.useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
+function usePrefersReducedMotion() {
+  return React.useContext(ReducedMotionContext);
+}
+
+function useSectionReveal(
+  shellRef: React.RefObject<HTMLElement | null>,
+  prefersReducedMotion: boolean,
+) {
+  const [motionReady, setMotionReady] = React.useState(false);
+
+  React.useEffect(() => {
+    const shell = shellRef.current;
+
+    if (!shell) {
+      return undefined;
+    }
+
+    const sections = Array.from(
+      shell.querySelectorAll<HTMLElement>(
+        [
+          ":scope > .metric-grid",
+          ":scope > .scenario-section",
+          ":scope > .control-board",
+          ":scope > .dashboard-grid",
+          ":scope > .timeline-section",
+          ":scope > .comparison-section",
+          ":scope > .assumptions-section",
+          ":scope > .action-section",
+          ":scope > .source-panel",
+        ].join(", "),
+      ),
+    );
+
+    sections.forEach((section, index) => {
+      section.classList.add("motion-reveal");
+      section.style.setProperty("--reveal-index", String(index));
+    });
+
+    setMotionReady(true);
+
+    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
+      sections.forEach((section) => section.classList.add("is-visible"));
+
+      return () => {
+        sections.forEach((section) => {
+          section.classList.remove("motion-reveal", "is-visible");
+          section.style.removeProperty("--reveal-index");
+        });
+      };
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      {
+        rootMargin: "0px 0px -8% 0px",
+        threshold: 0.14,
+      },
+    );
+
+    sections.forEach((section) => observer.observe(section));
+
+    return () => {
+      observer.disconnect();
+      sections.forEach((section) => {
+        section.classList.remove("motion-reveal", "is-visible");
+        section.style.removeProperty("--reveal-index");
+      });
+    };
+  }, [prefersReducedMotion, shellRef]);
+
+  return motionReady;
+}
+
+function useModelCue(scenarioId: ScenarioId, settings: ModelSettings) {
+  const [modelCue, setModelCue] = React.useState("");
+  const hasMounted = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return undefined;
+    }
+
+    setModelCue("Recalculating model");
+
+    const updatedTimer = window.setTimeout(() => setModelCue("Model updated"), 140);
+    const clearTimer = window.setTimeout(() => setModelCue(""), 620);
+
+    return () => {
+      window.clearTimeout(updatedTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [scenarioId, settings]);
+
+  return modelCue;
+}
+
+type AnimatedNumberProps = {
+  value: number;
+  formatter?: (value: number) => string;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+};
+
+function AnimatedNumber({
+  value,
+  formatter = formatMoney,
+  prefix = "",
+  suffix = "",
+  className,
+}: AnimatedNumberProps) {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [displayValue, setDisplayValue] = React.useState(value);
+  const [isChanging, setIsChanging] = React.useState(false);
+  const displayValueRef = React.useRef(value);
+
+  React.useEffect(() => {
+    const startValue = displayValueRef.current;
+
+    if (Object.is(startValue, value)) {
+      return undefined;
+    }
+
+    if (prefersReducedMotion) {
+      displayValueRef.current = value;
+      setDisplayValue(value);
+      setIsChanging(false);
+      return undefined;
+    }
+
+    let animationFrame = 0;
+    let settleTimer = 0;
+    const duration = 440;
+    const startedAt = performance.now();
+
+    setIsChanging(true);
+
+    const animate = (timestamp: number) => {
+      const progress = Math.min(1, (timestamp - startedAt) / duration);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      const nextValue = startValue + (value - startValue) * easedProgress;
+
+      displayValueRef.current = nextValue;
+      setDisplayValue(nextValue);
+
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      displayValueRef.current = value;
+      setDisplayValue(value);
+      settleTimer = window.setTimeout(() => setIsChanging(false), 160);
+    };
+
+    animationFrame = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(settleTimer);
+    };
+  }, [prefersReducedMotion, value]);
+
+  return (
+    <span className={`animated-number${isChanging ? " is-changing" : ""}${className ? ` ${className}` : ""}`}>
+      {prefix}
+      {formatter(displayValue)}
+      {suffix}
+    </span>
+  );
+}
+
 function App() {
+  const shellRef = React.useRef<HTMLElement | null>(null);
+  const prefersReducedMotion = useReducedMotionPreference();
   const [{ scenarioId, settings }, setPlannerState] =
     React.useState<PlannerState>(loadPlannerState);
+  const [hoveredMonth, setHoveredMonth] = React.useState<MonthId | null>(null);
 
   const series = React.useMemo(() => calculateSeries(settings), [settings]);
   const summary = React.useMemo(() => summarizeSeries(series, settings), [series, settings]);
   const scenarioRows = React.useMemo(() => buildScenarioRows(settings), [settings]);
   const workPreview = React.useMemo(() => getWorkPreview(settings), [settings]);
+  const modelCue = useModelCue(scenarioId, settings);
+  const motionReady = useSectionReveal(shellRef, prefersReducedMotion);
 
   React.useEffect(() => {
     savePlannerState({ scenarioId, settings });
@@ -765,7 +968,12 @@ function App() {
   };
 
   return (
-    <main className="planner-shell">
+    <ReducedMotionContext.Provider value={prefersReducedMotion}>
+    <main className={`planner-shell${motionReady ? " motion-ready" : ""}`} ref={shellRef}>
+      <div className={`model-cue${modelCue ? " is-visible" : ""}`} aria-hidden="true">
+        {modelCue}
+      </div>
+
       <Header summary={summary} />
 
       <section className="metric-grid" aria-label="Planner summary">
@@ -778,21 +986,32 @@ function App() {
         <MetricCard
           icon={<AlertTriangle aria-hidden="true" />}
           label="Lowest month in view"
-          value={`${summary.lowestMonth.short}: ${formatMoney(summary.lowestMonth.effective)}`}
-          detail={`${summary.lowestMonth.gapToFloor >= 0 ? "+" : ""}${formatMoney(
-            summary.lowestMonth.gapToFloor,
-          )} vs essential expenses after tuition reserve.`}
+          value={
+            <AnimatedNumber
+              value={summary.lowestMonth.effective}
+              prefix={`${summary.lowestMonth.short}: `}
+            />
+          }
+          detail={
+            <>
+              <AnimatedNumber
+                value={summary.lowestMonth.gapToFloor}
+                prefix={summary.lowestMonth.gapToFloor >= 0 ? "+" : ""}
+              />{" "}
+              vs essential expenses after tuition reserve.
+            </>
+          }
         />
         <MetricCard
           icon={<PiggyBank aria-hidden="true" />}
           label="Reserve needed after DOS"
-          value={formatMoney(summary.reserveNeeded)}
+          value={<AnimatedNumber value={summary.reserveNeeded} />}
           detail="Maximum cumulative shortfall against essential expenses from December-July."
         />
         <MetricCard
           icon={<WalletCards aria-hidden="true" />}
           label="VA catch-up modeled"
-          value={formatMoney(summary.potentialBackpay)}
+          value={<AnimatedNumber value={summary.potentialBackpay} />}
           detail="One-time accrued cash in the selected decision month; regular VA starts the next month."
         />
       </section>
@@ -833,16 +1052,32 @@ function App() {
       />
 
       <section className="dashboard-grid" aria-label="Income and risk visuals">
-        <IncomeLayerChart series={series} settings={settings} />
-        <MonthlyStressGrid series={series} settings={settings} />
+        <IncomeLayerChart
+          series={series}
+          settings={settings}
+          hoveredMonth={hoveredMonth}
+          onMonthFocus={setHoveredMonth}
+        />
+        <MonthlyStressGrid
+          series={series}
+          settings={settings}
+          hoveredMonth={hoveredMonth}
+          onMonthFocus={setHoveredMonth}
+        />
       </section>
 
-      <MasterTimeline settings={settings} series={series} />
+      <MasterTimeline
+        settings={settings}
+        series={series}
+        hoveredMonth={hoveredMonth}
+        onMonthFocus={setHoveredMonth}
+      />
       <ScenarioComparison rows={scenarioRows} selectedScenario={scenarioId} />
       <AssumptionsPanel settings={settings} />
       <ActionPlan />
       <SourcePanel />
     </main>
+    </ReducedMotionContext.Provider>
   );
 }
 
@@ -886,8 +1121,8 @@ function Header({ summary }: HeaderProps) {
 type MetricCardProps = {
   icon: React.ReactNode;
   label: string;
-  value: string;
-  detail: string;
+  value: React.ReactNode;
+  detail: React.ReactNode;
 };
 
 function MetricCard({ icon, label, value, detail }: MetricCardProps) {
@@ -895,7 +1130,7 @@ function MetricCard({ icon, label, value, detail }: MetricCardProps) {
     <article className="metric-card">
       <div className="metric-icon">{icon}</div>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong className="metric-value">{value}</strong>
       <p>{detail}</p>
     </article>
   );
@@ -973,10 +1208,17 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </label>
           <div className="inline-result">
             <span>VA planning amount</span>
-            <strong>{formatDetailedMoney(vaMonthly)}/mo</strong>
+            <strong>
+              <AnimatedNumber value={vaMonthly} formatter={formatDetailedMoney} suffix="/mo" />
+            </strong>
             <small>
               {settings.includeVaBackpay && vaCatchUp > 0
-                ? `${formatDetailedMoney(vaCatchUp)} catch-up in ${getVaDecisionMonthLabel(settings.vaStart)}.`
+                ? (
+                    <>
+                      <AnimatedNumber value={vaCatchUp} formatter={formatDetailedMoney} /> catch-up in{" "}
+                      {getVaDecisionMonthLabel(settings.vaStart)}.
+                    </>
+                  )
                 : "No catch-up cash modeled."}{" "}
               {recurringVaMonth ? `Regular VA cash starts ${recurringVaMonth}.` : "No VA cash by July."}
             </small>
@@ -1043,12 +1285,24 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </label>
           <div className="inline-result">
             <span>MGIB and Pell posture</span>
-            <strong>{schoolIsFullTime ? `${formatMoney(mgibMonthly)}/mo MGIB` : "MGIB full-time not modeled"}</strong>
+            <strong>
+              {schoolIsFullTime ? (
+                <>
+                  <AnimatedNumber value={mgibMonthly} suffix="/mo" /> MGIB
+                </>
+              ) : (
+                "MGIB full-time not modeled"
+              )}
+            </strong>
             <small>
-              Pell is separate: {formatMoney(pellTermAmount)}/term{" "}
+              Pell is separate: <AnimatedNumber value={pellTermAmount} suffix="/term" />{" "}
               {settings.planningMode === "cashTiming"
                 ? "as a term-start cash event."
-                : `or ${formatMoney(pellMonthly)}/mo as a budget equivalent.`}
+                : (
+                    <>
+                      or <AnimatedNumber value={pellMonthly} suffix="/mo" /> as a budget equivalent.
+                    </>
+                  )}
             </small>
           </div>
           <p className="field-note">
@@ -1217,13 +1471,17 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             <span>Texas / San Antonio preview</span>
             <strong>
               {workPreview.monthlyGross > 0
-                ? `${formatMoney(workPreview.monthlyNet)}/mo estimated take-home`
+                ? (
+                    <>
+                      <AnimatedNumber value={workPreview.monthlyNet} suffix="/mo" /> estimated take-home
+                    </>
+                  )
                 : "No work income"}
             </strong>
             {workPreview.monthlyGross > 0 ? (
               <small>
-                {formatMoney(workPreview.monthlyGross)}/mo gross.{" "}
-                {formatMoney(workPreview.taxAndDeductionMonthly)}/mo tax and deductions.{" "}
+                <AnimatedNumber value={workPreview.monthlyGross} suffix="/mo" /> gross.{" "}
+                <AnimatedNumber value={workPreview.taxAndDeductionMonthly} suffix="/mo" /> tax and deductions.{" "}
                 {Math.round(workPreview.netRate * 100)}% net.
               </small>
             ) : null}
@@ -1364,7 +1622,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </label>
           <div className="inline-result">
             <span>UCX amount modeled</span>
-            <strong>{formatMoney((settings.ucxWeeklyBenefit * 52) / 12 * UCX_TAX_HOLD_BACK)}/mo</strong>
+            <strong>
+              <AnimatedNumber
+                value={(settings.ucxWeeklyBenefit * 52) / 12 * UCX_TAX_HOLD_BACK}
+                suffix="/mo"
+              />
+            </strong>
             <small>
               Cash view keeps term Pell and WGU tuition as February events; budget view smooths
               them across the term.
@@ -1383,15 +1646,23 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
 function IncomeLayerChart({
   series,
   settings,
+  hoveredMonth,
+  onMonthFocus,
 }: {
   series: MonthModel[];
   settings: ModelSettings;
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
 }) {
+  const [hoveredStream, setHoveredStream] = React.useState<IncomeKey | null>(null);
   const targets = getExpenseTargets(settings);
   const maxTotal = Math.max(targets.ideal, ...series.map((month) => month.total)) * 1.08;
 
   return (
-    <section className="visual-panel income-panel" aria-labelledby="income-heading">
+    <section
+      className={`visual-panel income-panel${hoveredStream ? " has-stream-focus" : ""}`}
+      aria-labelledby="income-heading"
+    >
       <div className="section-heading">
         <div>
           <p className="eyebrow">Income layer visual</p>
@@ -1399,17 +1670,32 @@ function IncomeLayerChart({
         </div>
         <div className="legend" aria-label="Income legend">
           {INCOME_ORDER.map((key) => (
-            <span key={key}>
+            <button
+              className={`legend-item${hoveredStream === key ? " is-active" : ""}`}
+              type="button"
+              key={key}
+              aria-pressed={hoveredStream === key}
+              onPointerEnter={() => setHoveredStream(key)}
+              onPointerLeave={() => setHoveredStream(null)}
+              onFocus={() => setHoveredStream(key)}
+              onBlur={() => setHoveredStream(null)}
+              onClick={() => setHoveredStream((current) => (current === key ? null : key))}
+            >
               <i className={`legend-dot stream-${key}`} aria-hidden="true" />
               {INCOME_LABELS[key]}
-            </span>
+            </button>
           ))}
         </div>
       </div>
 
       <div className="income-chart" role="img" aria-label="Stacked monthly income chart">
         {series.map((month) => (
-          <div className="stack-column" key={month.id}>
+          <div
+            className={`stack-column${hoveredMonth === month.id ? " is-month-focused" : ""}`}
+            key={month.id}
+            onPointerEnter={() => onMonthFocus(month.id)}
+            onPointerLeave={() => onMonthFocus(null)}
+          >
             <div
               className="stack-track"
               aria-label={`${month.label}: ${formatMoney(month.total)} total planning resources`}
@@ -1427,15 +1713,37 @@ function IncomeLayerChart({
                 return (
                   <span
                     key={key}
-                    className={`stack-segment stream-${key}`}
+                    className={`stack-segment stream-${key}${
+                      hoveredStream === key ? " is-stream-focused" : ""
+                    }${hoveredStream && hoveredStream !== key ? " is-stream-muted" : ""}`}
                     style={{ height: `${Math.max(1.6, (amount / maxTotal) * 100)}%` }}
                     title={`${INCOME_LABELS[key]}: ${formatMoney(amount)}`}
                   />
                 );
               })}
             </div>
+            <div className="chart-tooltip" aria-hidden="true">
+              <strong>{month.label}</strong>
+              {INCOME_ORDER.map((key) => {
+                const amount = month.streams[key];
+
+                if (amount <= 0) {
+                  return null;
+                }
+
+                return (
+                  <span key={key}>
+                    <i className={`legend-dot stream-${key}`} aria-hidden="true" />
+                    {INCOME_LABELS[key]}: {formatMoney(amount)}
+                  </span>
+                );
+              })}
+              <em>Total: {formatMoney(month.total)}</em>
+            </div>
             <span className="stack-month">{month.short}</span>
-            <strong>{formatMoney(month.total)}</strong>
+            <strong>
+              <AnimatedNumber value={month.total} />
+            </strong>
           </div>
         ))}
       </div>
@@ -1459,9 +1767,13 @@ function IncomeLayerChart({
 function MonthlyStressGrid({
   series,
   settings,
+  hoveredMonth,
+  onMonthFocus,
 }: {
   series: MonthModel[];
   settings: ModelSettings;
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
 }) {
   const targets = getExpenseTargets(settings);
 
@@ -1475,12 +1787,22 @@ function MonthlyStressGrid({
       </div>
       <div className="stress-grid">
         {series.map((month) => (
-          <article className={`stress-tile status-${month.status}`} key={month.id}>
+          <article
+            className={`stress-tile status-${month.status}${hoveredMonth === month.id ? " is-month-focused" : ""}`}
+            key={month.id}
+            onPointerEnter={() => onMonthFocus(month.id)}
+            onPointerLeave={() => onMonthFocus(null)}
+          >
             <span>{month.short}</span>
-            <strong>{formatMoney(month.effective)}</strong>
+            <strong>
+              <AnimatedNumber value={month.effective} />
+            </strong>
             <small>
-              {month.gapToFloor >= 0 ? "+" : ""}
-              {formatMoney(month.gapToFloor)} vs essential
+              <AnimatedNumber
+                value={month.gapToFloor}
+                prefix={month.gapToFloor >= 0 ? "+" : ""}
+              />{" "}
+              vs essential
             </small>
           </article>
         ))}
@@ -1506,9 +1828,13 @@ function MonthlyStressGrid({
 function MasterTimeline({
   settings,
   series,
+  hoveredMonth,
+  onMonthFocus,
 }: {
   settings: ModelSettings;
   series: MonthModel[];
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
 }) {
   const rows = buildTimelineRows(settings, series);
 
@@ -1525,7 +1851,13 @@ function MasterTimeline({
           <div className="timeline-header" role="row">
             <span role="columnheader">Layer</span>
             {MONTHS.map((month) => (
-              <span role="columnheader" key={month.id}>
+              <span
+                className={hoveredMonth === month.id ? "is-month-focused" : ""}
+                role="columnheader"
+                key={month.id}
+                onPointerEnter={() => onMonthFocus(month.id)}
+                onPointerLeave={() => onMonthFocus(null)}
+              >
                 {month.short}
               </span>
             ))}
@@ -1534,7 +1866,13 @@ function MasterTimeline({
             <div className="timeline-row" role="row" key={row.label}>
               <span role="rowheader">{row.label}</span>
               {row.cells.map((cell) => (
-                <span className={`timeline-cell ${cell.kind}`} role="cell" key={cell.monthId}>
+                <span
+                  className={`timeline-cell ${cell.kind}${hoveredMonth === cell.monthId ? " is-month-focused" : ""}`}
+                  role="cell"
+                  key={cell.monthId}
+                  onPointerEnter={() => onMonthFocus(cell.monthId)}
+                  onPointerLeave={() => onMonthFocus(null)}
+                >
                   {cell.label}
                 </span>
               ))}
@@ -1598,9 +1936,15 @@ function ScenarioComparison({
                 <td>
                   <strong>{row.label}</strong>
                 </td>
-                <td>{formatMoney(row.average)}</td>
-                <td>{formatMoney(row.minimum)}</td>
-                <td>{formatMoney(row.reserveNeeded)}</td>
+                <td>
+                  <AnimatedNumber value={row.average} />
+                </td>
+                <td>
+                  <AnimatedNumber value={row.minimum} />
+                </td>
+                <td>
+                  <AnimatedNumber value={row.reserveNeeded} />
+                </td>
                 <td>{row.dangerMonths}</td>
                 <td>{row.stress}</td>
                 <td>{row.schoolTime}</td>
