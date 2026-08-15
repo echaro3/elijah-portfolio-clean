@@ -29,21 +29,33 @@
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   background:
     linear-gradient(180deg, rgba(23, 61, 53, 0.08), transparent 260px),
     var(--bg);
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
 }
 
 button,
 input,
 select {
   font: inherit;
+  max-width: 100%;
 }
 
 button,
@@ -65,9 +77,12 @@ a {
   display: grid;
   gap: 22px;
   width: min(1480px, 100%);
+  max-width: 100%;
+  min-width: 0;
   min-height: 100vh;
   margin: 0 auto;
   padding: 20px clamp(14px, 3vw, 34px) 34px;
+  overflow: hidden;
   color: var(--ink);
 }
 
@@ -75,6 +90,7 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
   gap: 22px;
+  min-width: 0;
   align-items: stretch;
 }
 
@@ -92,6 +108,8 @@ a {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.86);
   box-shadow: var(--shadow);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .header-copy {
@@ -125,7 +143,7 @@ h3 {
 }
 
 .header-copy h1 {
-  max-width: 820px;
+  max-width: 100%;
   color: var(--forest);
   font-size: clamp(2.35rem, 5vw, 5.8rem);
   font-weight: 800;
@@ -133,7 +151,7 @@ h3 {
 }
 
 .header-copy p:last-child {
-  max-width: 650px;
+  max-width: 100%;
   margin: 18px 0 0;
   color: var(--muted);
   font-size: clamp(1rem, 1.45vw, 1.15rem);
@@ -177,6 +195,7 @@ h3 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
 }
 
 .metric-card {
@@ -254,6 +273,7 @@ legend svg,
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+  min-width: 0;
 }
 
 .scenario-button {
@@ -307,6 +327,7 @@ legend svg,
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
 }
 
 fieldset {
@@ -433,6 +454,7 @@ input[type="range"] {
   display: grid;
   grid-template-columns: minmax(0, 1.34fr) minmax(360px, 0.66fr);
   gap: 14px;
+  min-width: 0;
   align-items: start;
 }
 
@@ -634,7 +656,11 @@ input[type="range"] {
 
 .timeline-wrap,
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .timeline-grid {
@@ -755,9 +781,11 @@ input[type="range"] {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
 }
 
 .assumption-grid article {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-strong);
@@ -786,12 +814,14 @@ input[type="range"] {
   display: grid;
   grid-template-columns: repeat(7, minmax(210px, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .action-card {
   display: grid;
   align-content: start;
   gap: 12px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-strong);
@@ -809,6 +839,7 @@ input[type="range"] {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   gap: 18px;
+  min-width: 0;
   align-items: start;
 }
 
@@ -878,11 +909,16 @@ input[type="range"] {
 
   .header-copy {
     min-height: auto;
-    padding: 24px;
+    padding: 22px;
   }
 
   .header-copy h1 {
-    font-size: clamp(2.15rem, 14vw, 4rem);
+    font-size: 2.65rem;
+    line-height: 0.98;
+  }
+
+  .header-copy p:last-child {
+    font-size: 1rem;
   }
 
   .header-facts,
@@ -896,10 +932,12 @@ input[type="range"] {
 
   .section-heading {
     display: grid;
+    gap: 10px;
   }
 
   .model-stamp {
     width: fit-content;
+    max-width: 100%;
   }
 
   .income-chart {
@@ -914,19 +952,184 @@ input[type="range"] {
   .stress-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .timeline-wrap,
+  .table-wrap {
+    padding-bottom: 4px;
+  }
+
+  .timeline-grid {
+    min-width: 760px;
+  }
+
+  .scenario-table {
+    min-width: 1080px;
+  }
 }
 
 @media (max-width: 480px) {
+  .planner-shell {
+    gap: 12px;
+    padding: 10px;
+  }
+
+  .header-copy {
+    padding: 20px;
+  }
+
+  .header-copy h1 {
+    font-size: 2.25rem;
+    line-height: 1;
+  }
+
+  .eyebrow {
+    font-size: 0.68rem;
+  }
+
+  .header-copy p:last-child {
+    font-size: 0.98rem;
+  }
+
   .stress-grid,
   .header-facts {
     grid-template-columns: 1fr;
   }
 
+  .header-facts div {
+    min-height: 116px;
+    padding: 18px;
+  }
+
+  .header-facts span,
+  .metric-card span,
+  .inline-result span,
+  .action-card span {
+    font-size: 0.72rem;
+  }
+
+  .metric-card,
+  .scenario-section,
+  .control-board,
+  .visual-panel,
+  .timeline-section,
+  .comparison-section,
+  .assumptions-section,
+  .action-section,
+  .source-panel {
+    padding: 14px;
+  }
+
+  .section-heading h2 {
+    font-size: 1.28rem;
+  }
+
+  .model-stamp {
+    font-size: 0.78rem;
+  }
+
   .scenario-button {
+    grid-template-columns: 1fr;
+    gap: 8px;
     min-height: auto;
+    padding: 13px;
+  }
+
+  .scenario-button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  select,
+  input[type="number"],
+  .segmented-control button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .segmented-control {
+    gap: 5px;
+  }
+
+  .segmented-control button {
+    padding: 0 8px;
+  }
+
+  .checkbox-row {
+    align-items: flex-start;
   }
 
   .legend {
     justify-content: flex-start;
+  }
+
+  .income-chart {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .stack-column {
+    grid-template-rows: 154px auto auto;
+    gap: 6px;
+  }
+
+  .stack-month,
+  .stack-column strong {
+    font-size: 0.72rem;
+  }
+
+  .stress-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-grid {
+    gap: 5px;
+    min-width: 680px;
+  }
+
+  .timeline-header,
+  .timeline-row {
+    grid-template-columns: 112px repeat(12, 46px);
+    gap: 5px;
+  }
+
+  .timeline-header span,
+  .timeline-row > span:first-child,
+  .timeline-cell {
+    min-height: 34px;
+    padding: 8px 6px;
+    font-size: 0.68rem;
+  }
+
+  .scenario-table {
+    min-width: 1080px;
+    font-size: 0.78rem;
+  }
+
+  .scenario-table th,
+  .scenario-table td {
+    padding: 10px 8px;
+    white-space: nowrap;
+  }
+
+  .scenario-table .table-subcopy {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 360px) {
+  .header-copy h1 {
+    font-size: 2.05rem;
+  }
+
+  .income-chart {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .timeline-grid {
+    min-width: 620px;
+  }
+
+  .scenario-table {
+    min-width: 1040px;
   }
 }
