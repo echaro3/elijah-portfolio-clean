@@ -18,6 +18,11 @@ import {
   SlidersHorizontal,
   WalletCards,
 } from "lucide-react";
+import { getExpenseTargets } from "./plannerModel";
+
+const FinancialTimeline3D = React.lazy(
+  () => import("./components/FinancialTimeline3D/FinancialTimeline3D"),
+);
 
 const MONEY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -46,7 +51,7 @@ const MONTHS = [
   { id: "2027-07", short: "Jul", label: "July 2027" },
 ] as const;
 
-type MonthId = (typeof MONTHS)[number]["id"];
+export type MonthId = (typeof MONTHS)[number]["id"];
 type Rating = 80 | 90 | 100;
 type ScenarioId = "schoolFirst" | "bridge" | "partTime" | "fullTime" | "delayedVa";
 type WorkType = "none" | "contract" | "partTime" | "permanent";
@@ -60,10 +65,10 @@ type PayrollType = "w2" | "selfEmployed";
 type FilingStatus = "single" | "marriedJoint" | "headOfHousehold";
 type FinalPayMonth = "2026-12" | "2027-01" | "none";
 type PellEnrollment = "none" | "half" | "threeQuarter" | "full";
-type IncomeKey = "military" | "civilian" | "ucx" | "vaBackpay" | "va" | "mgib" | "pell";
-type Status = "green" | "yellow" | "red";
+export type IncomeKey = "military" | "civilian" | "ucx" | "vaBackpay" | "va" | "mgib" | "pell";
+export type Status = "green" | "yellow" | "red";
 
-type ModelSettings = {
+export type ModelSettings = {
   planningMode: PlanningMode;
   rating: Rating;
   smcK: boolean;
@@ -101,7 +106,7 @@ type PlannerState = {
   settings: ModelSettings;
 };
 
-type MonthModel = {
+export type MonthModel = {
   id: MonthId;
   short: string;
   label: string;
@@ -1237,6 +1242,14 @@ function App() {
         />
       </section>
 
+      <HolographicTimelineSection
+        series={series}
+        settings={settings}
+        hoveredMonth={hoveredMonth}
+        onMonthFocus={setHoveredMonth}
+        reducedMotion={prefersReducedMotion}
+      />
+
       <MasterTimeline
         settings={settings}
         series={series}
@@ -1790,6 +1803,85 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </p>
         </fieldset>
       </div>
+    </section>
+  );
+}
+
+type HolographicTimelineSectionProps = {
+  series: MonthModel[];
+  settings: ModelSettings;
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
+  reducedMotion: boolean;
+};
+
+function HolographicTimelineSection({
+  series,
+  settings,
+  hoveredMonth,
+  onMonthFocus,
+  reducedMotion,
+}: HolographicTimelineSectionProps) {
+  const [mode, setMode] = React.useState<"standard" | "holographic">("standard");
+  const targets = getExpenseTargets(settings);
+  const dangerMonths = series.filter((month) => month.status === "red").length;
+  const peakMonth = series.reduce((highest, month) => (month.total > highest.total ? month : highest), series[0]);
+
+  return (
+    <section
+      className={`hologram-section${mode === "holographic" ? " is-active" : ""}`}
+      aria-labelledby="hologram-heading"
+    >
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Analysis mode</p>
+          <h2 id="hologram-heading">Holographic financial timeline</h2>
+        </div>
+        <div className="segmented-control two-up analysis-mode-toggle" role="group" aria-label="Timeline analysis mode">
+          <button
+            type="button"
+            aria-pressed={mode === "standard"}
+            onClick={() => setMode("standard")}
+          >
+            Standard
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "holographic"}
+            onClick={() => setMode("holographic")}
+          >
+            Holographic
+          </button>
+        </div>
+      </div>
+
+      {mode === "holographic" ? (
+        <React.Suspense
+          fallback={
+            <div className="hologram-loading" role="status">
+              Initializing 3D analysis...
+            </div>
+          }
+        >
+          <FinancialTimeline3D
+            series={series}
+            settings={settings}
+            hoveredMonth={hoveredMonth}
+            onMonthFocus={onMonthFocus}
+            reducedMotion={reducedMotion}
+          />
+        </React.Suspense>
+      ) : (
+        <div className="hologram-standby" aria-label="Holographic timeline summary">
+          <span>
+            <Layers3 aria-hidden="true" />
+            {series.length} months
+          </span>
+          <span>Floor {formatMoney(targets.essential)}/mo</span>
+          <span>{dangerMonths} danger months</span>
+          <span>Peak {peakMonth.short} {formatMoney(peakMonth.total)}</span>
+        </div>
+      )}
     </section>
   );
 }
@@ -2860,19 +2952,6 @@ function calculateSelfEmploymentTax(netBusinessIncome: number, filingStatus: Fil
     ADDITIONAL_MEDICARE_RATE;
 
   return socialSecurity + medicare + additionalMedicare;
-}
-
-function getExpenseTargets(
-  settings: Pick<
-    ModelSettings,
-    "essentialExpenseTarget" | "normalLifestyleTarget" | "idealSavingsTarget"
-  >,
-) {
-  const essential = Math.max(0, settings.essentialExpenseTarget);
-  const normal = Math.max(essential, settings.normalLifestyleTarget);
-  const ideal = Math.max(normal, settings.idealSavingsTarget);
-
-  return { essential, normal, ideal };
 }
 
 function getStatus(

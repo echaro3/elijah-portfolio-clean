@@ -1,0 +1,372 @@
+import * as React from "react";
+import type { IncomeKey, MonthId, MonthModel, ModelSettings } from "../../App";
+import { getExpenseTargets } from "../../plannerModel";
+import { FinancialTimelineScene } from "./TimelineScene";
+import {
+  STREAM_VISUALS,
+  TIMELINE_STREAMS,
+  type CameraPreset,
+  type Timeline3DEvent,
+  type Timeline3DThreshold,
+} from "./types";
+
+const MONEY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+type FinancialTimeline3DProps = {
+  series: MonthModel[];
+  settings: ModelSettings;
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
+  reducedMotion: boolean;
+};
+
+export default function FinancialTimeline3D({
+  series,
+  settings,
+  hoveredMonth,
+  onMonthFocus,
+  reducedMotion,
+}: FinancialTimeline3DProps) {
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const stageRef = React.useRef<HTMLDivElement | null>(null);
+  const sceneRef = React.useRef<FinancialTimelineScene | null>(null);
+  const [rendererStatus, setRendererStatus] = React.useState<"pending" | "ready" | "unavailable">(
+    "pending",
+  );
+  const [threshold, setThreshold] = React.useState<Timeline3DThreshold>("essential");
+  const [activeStream, setActiveStream] = React.useState<IncomeKey | null>(null);
+  const [selectedMonth, setSelectedMonth] = React.useState<MonthId | null>(null);
+
+  const targets = React.useMemo(() => getExpenseTargets(settings), [settings]);
+  const thresholdValue = targets[threshold];
+  const events = React.useMemo(() => buildTimelineEvents(series, settings), [series, settings]);
+  const activeMonth =
+    series.find((month) => month.id === selectedMonth) ??
+    series.find((month) => month.id === hoveredMonth) ??
+    series.find((month) => month.status === "red") ??
+    series[0];
+
+  React.useEffect(() => {
+    if (!canvasRef.current || !stageRef.current) {
+      return undefined;
+    }
+
+    if (!hasWebGL()) {
+      setRendererStatus("unavailable");
+      return undefined;
+    }
+
+    try {
+      const scene = new FinancialTimelineScene({
+        canvas: canvasRef.current,
+        container: stageRef.current,
+        onHoverMonth: onMonthFocus,
+        onSelectMonth: setSelectedMonth,
+      });
+      sceneRef.current = scene;
+      setRendererStatus("ready");
+
+      return () => {
+        scene.dispose();
+        sceneRef.current = null;
+      };
+    } catch {
+      setRendererStatus("unavailable");
+      return undefined;
+    }
+  }, [onMonthFocus]);
+
+  React.useEffect(() => {
+    sceneRef.current?.update({
+      series,
+      thresholdLabel: getThresholdLabel(threshold),
+      thresholdValue,
+      activeStream,
+      selectedMonth,
+      hoveredMonth,
+      events,
+      reducedMotion,
+    });
+  }, [activeStream, events, hoveredMonth, reducedMotion, selectedMonth, series, threshold, thresholdValue]);
+
+  const chooseMonth = (monthId: MonthId) => {
+    setSelectedMonth(monthId);
+    onMonthFocus(monthId);
+  };
+
+  const setCameraPreset = (preset: CameraPreset) => {
+    sceneRef.current?.setCameraPreset(preset);
+  };
+
+  if (rendererStatus === "unavailable") {
+    return (
+      <div className="timeline-3d-fallback" role="status">
+        3D analysis unavailable on this device. Standard visualization remains active.
+      </div>
+    );
+  }
+
+  return (
+    <div className="timeline-3d-shell">
+      <div className="timeline-3d-toolbar" aria-label="Holographic analysis controls">
+        <div>
+          <span>Reference plane</span>
+          <div className="segmented-control three-up" role="group" aria-label="Reference plane">
+            {(["essential", "normal", "ideal"] as Timeline3DThreshold[]).map((option) => (
+              <button
+                type="button"
+                key={option}
+                aria-pressed={threshold === option}
+                onClick={() => setThreshold(option)}
+              >
+                {getThresholdLabel(option)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <span>Camera</span>
+          <div className="timeline-3d-camera-controls" role="group" aria-label="Camera presets">
+            <button type="button" onClick={() => setCameraPreset("perspective")}>
+              Perspective
+            </button>
+            <button type="button" onClick={() => setCameraPreset("front")}>
+              Front
+            </button>
+            <button type="button" onClick={() => setCameraPreset("top")}>
+              Top
+            </button>
+            <button type="button" onClick={() => setCameraPreset("risk")}>
+              Risk window
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="timeline-3d-stage" ref={stageRef}>
+        <canvas
+          ref={canvasRef}
+          className="timeline-3d-canvas"
+          role="img"
+          aria-label="Interactive 3D financial timeline from August 2026 through July 2027"
+        />
+        {rendererStatus === "pending" ? (
+          <div className="timeline-3d-canvas-status" role="status">
+            Projecting model...
+          </div>
+        ) : null}
+        {activeMonth ? (
+          <MonthAnalysisPanel
+            month={activeMonth}
+            thresholdLabel={getThresholdLabel(threshold)}
+            thresholdValue={thresholdValue}
+          />
+        ) : null}
+      </div>
+
+      <div className="timeline-3d-lower">
+        <div className="timeline-3d-streams" aria-label="Income stream filters">
+          <button
+            type="button"
+            className={activeStream === null ? "is-active" : ""}
+            aria-pressed={activeStream === null}
+            onClick={() => setActiveStream(null)}
+          >
+            All streams
+          </button>
+          {TIMELINE_STREAMS.map((stream) => (
+            <button
+              type="button"
+              key={stream}
+              className={activeStream === stream ? "is-active" : ""}
+              aria-pressed={activeStream === stream}
+              onClick={() => setActiveStream((current) => (current === stream ? null : stream))}
+            >
+              <i
+                aria-hidden="true"
+                style={{ "--stream-color": STREAM_VISUALS[stream].cssColor } as React.CSSProperties}
+              />
+              {STREAM_VISUALS[stream].label}
+            </button>
+          ))}
+        </div>
+
+        <div className="timeline-3d-month-picker" aria-label="Inspect month">
+          {series.map((month) => (
+            <button
+              type="button"
+              key={month.id}
+              aria-pressed={activeMonth?.id === month.id}
+              className={`status-${month.status}`}
+              onClick={() => chooseMonth(month.id)}
+              onFocus={() => onMonthFocus(month.id)}
+              onBlur={() => onMonthFocus(null)}
+            >
+              {month.short}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthAnalysisPanel({
+  month,
+  thresholdLabel,
+  thresholdValue,
+}: {
+  month: MonthModel;
+  thresholdLabel: string;
+  thresholdValue: number;
+}) {
+  const gap = month.effective - thresholdValue;
+
+  return (
+    <aside className="timeline-3d-detail" aria-live="polite" aria-label={`${month.label} 3D analysis`}>
+      <span>{month.label}</span>
+      <strong>{formatMoney(month.total)} resources</strong>
+      <dl>
+        <div>
+          <dt>After tuition</dt>
+          <dd>{formatMoney(month.effective)}</dd>
+        </div>
+        <div>
+          <dt>{thresholdLabel} floor</dt>
+          <dd>{formatMoney(thresholdValue)}</dd>
+        </div>
+        <div>
+          <dt>Reference gap</dt>
+          <dd className={gap >= 0 ? "is-positive" : "is-negative"}>
+            {gap >= 0 ? "+" : ""}
+            {formatMoney(gap)}
+          </dd>
+        </div>
+        {month.tuition > 0 ? (
+          <div>
+            <dt>Tuition reserve</dt>
+            <dd>-{formatMoney(month.tuition)}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <div className="timeline-3d-detail-streams">
+        {TIMELINE_STREAMS.filter((stream) => month.streams[stream] > 0).map((stream) => (
+          <span key={stream}>
+            <i
+              aria-hidden="true"
+              style={{ "--stream-color": STREAM_VISUALS[stream].cssColor } as React.CSSProperties}
+            />
+            {STREAM_VISUALS[stream].label}: {formatMoney(month.streams[stream])}
+          </span>
+        ))}
+      </div>
+      <em className={`status-${month.status}`}>{getStatusLabel(month.status)}</em>
+    </aside>
+  );
+}
+
+function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Timeline3DEvent[] {
+  const events: Timeline3DEvent[] = [
+    { id: "terminal-leave", monthId: "2026-10", label: "Leave", kind: "transition" },
+    { id: "separation", monthId: "2026-12", label: "DOS", kind: "transition" },
+    { id: "wgu-start", monthId: "2027-02", label: "WGU", kind: "school" },
+  ];
+
+  const firstWork = series.find((month) => month.streams.civilian > 0);
+  if (firstWork) {
+    events.push({ id: "work-start", monthId: firstWork.id, label: "Work", kind: "work" });
+  }
+
+  if (settings.workType === "contract") {
+    events.push({ id: "contract-end", monthId: settings.contractEnd, label: "Contract end", kind: "work" });
+  }
+
+  if (settings.vaStart !== "none") {
+    const decisionMonth = series.find((month) => month.id === settings.vaStart);
+    if (decisionMonth) {
+      events.push({
+        id: "va-decision",
+        monthId: decisionMonth.id,
+        label: decisionMonth.streams.vaBackpay > 0 ? "VA catch-up" : "VA decision",
+        kind: "va",
+      });
+    }
+
+    const decisionIndex = series.findIndex((month) => month.id === settings.vaStart);
+    const recurringMonth = series[decisionIndex + 1];
+    if (recurringMonth?.streams.va) {
+      events.push({ id: "va-recurring", monthId: recurringMonth.id, label: "VA starts", kind: "va" });
+    }
+  }
+
+  const firstPell = series.find((month) => month.streams.pell > 0);
+  if (firstPell) {
+    events.push({ id: "pell", monthId: firstPell.id, label: "Pell", kind: "school" });
+  }
+
+  const firstMgib = series.find((month) => month.streams.mgib > 0);
+  if (firstMgib) {
+    events.push({ id: "mgib", monthId: firstMgib.id, label: "MGIB", kind: "school" });
+  }
+
+  const firstDanger = series.find((month) => month.status === "red");
+  if (firstDanger) {
+    events.push({ id: "risk", monthId: firstDanger.id, label: "Risk", kind: "risk" });
+  }
+
+  return dedupeEvents(events);
+}
+
+function dedupeEvents(events: Timeline3DEvent[]) {
+  const seen = new Set<string>();
+
+  return events.filter((event) => {
+    const key = `${event.monthId}-${event.label}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function getThresholdLabel(threshold: Timeline3DThreshold) {
+  if (threshold === "normal") {
+    return "Normal";
+  }
+
+  if (threshold === "ideal") {
+    return "Comfort";
+  }
+
+  return "Essential";
+}
+
+function getStatusLabel(status: MonthModel["status"]) {
+  if (status === "red") {
+    return "Danger";
+  }
+
+  if (status === "yellow") {
+    return "Tight";
+  }
+
+  return "Stable";
+}
+
+function hasWebGL() {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
+function formatMoney(value: number) {
+  return MONEY_FORMATTER.format(Math.round(value));
+}

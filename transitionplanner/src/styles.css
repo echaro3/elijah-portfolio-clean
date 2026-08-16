@@ -259,6 +259,7 @@ a {
 .header-facts,
 .metric-card,
 .control-board,
+.hologram-section,
 .visual-panel,
 .timeline-section,
 .comparison-section,
@@ -279,6 +280,7 @@ a {
 .header-copy::before,
 .metric-card::before,
 .control-board::before,
+.hologram-section::before,
 .visual-panel::before,
 .timeline-section::before,
 .comparison-section::before,
@@ -487,6 +489,7 @@ legend svg,
 
 .scenario-section,
 .control-board,
+.hologram-section,
 .timeline-section,
 .comparison-section,
 .assumptions-section,
@@ -996,6 +999,10 @@ input[type="range"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.segmented-control.three-up {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .segmented-control button {
   position: relative;
   overflow: hidden;
@@ -1050,6 +1057,293 @@ input[type="range"] {
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.48;
+}
+
+.hologram-section {
+  overflow: hidden;
+}
+
+.analysis-mode-toggle {
+  width: min(320px, 100%);
+}
+
+.hologram-standby {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  border-top: 1px solid rgba(111, 180, 216, 0.16);
+  padding-top: 12px;
+}
+
+.hologram-standby span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid rgba(126, 214, 246, 0.18);
+  border-radius: 999px;
+  background: rgba(7, 17, 30, 0.62);
+  color: var(--muted-strong);
+  padding: 0 11px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.hologram-standby svg {
+  width: 16px;
+  height: 16px;
+  color: var(--teal);
+}
+
+.hologram-loading,
+.timeline-3d-fallback,
+.timeline-3d-canvas-status {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border-top: 1px solid rgba(111, 180, 216, 0.16);
+  color: var(--muted-strong);
+  font-weight: 850;
+}
+
+.timeline-3d-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.timeline-3d-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(360px, 1.25fr);
+  gap: 12px;
+  align-items: end;
+  min-width: 0;
+}
+
+.timeline-3d-toolbar > div {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.timeline-3d-toolbar span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timeline-3d-camera-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.timeline-3d-camera-controls button,
+.timeline-3d-streams button,
+.timeline-3d-month-picker button {
+  min-height: 36px;
+  border: 1px solid rgba(126, 214, 246, 0.24);
+  border-radius: 6px;
+  background: rgba(7, 17, 30, 0.76);
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 0.8rem;
+  font-weight: 850;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasized);
+}
+
+.timeline-3d-camera-controls button:hover,
+.timeline-3d-camera-controls button:focus-visible,
+.timeline-3d-streams button:hover,
+.timeline-3d-streams button:focus-visible,
+.timeline-3d-streams button.is-active,
+.timeline-3d-month-picker button:hover,
+.timeline-3d-month-picker button:focus-visible,
+.timeline-3d-month-picker button[aria-pressed="true"] {
+  border-color: rgba(76, 239, 255, 0.54);
+  color: var(--ink-strong);
+  box-shadow: 0 0 18px rgba(76, 239, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.timeline-3d-streams button.is-active,
+.timeline-3d-month-picker button[aria-pressed="true"] {
+  background:
+    linear-gradient(180deg, rgba(41, 198, 230, 0.2), rgba(10, 42, 58, 0.74));
+}
+
+.timeline-3d-stage {
+  position: relative;
+  min-height: clamp(430px, 48vw, 610px);
+  margin-inline: -18px;
+  border-top: 1px solid rgba(111, 180, 216, 0.18);
+  border-bottom: 1px solid rgba(111, 180, 216, 0.18);
+  background:
+    radial-gradient(circle at 50% 28%, rgba(76, 239, 255, 0.13), transparent 34%),
+    radial-gradient(circle at 70% 58%, rgba(185, 161, 255, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(4, 12, 22, 0.98), rgba(8, 18, 31, 0.98));
+  overflow: hidden;
+  cursor: grab;
+}
+
+.timeline-3d-stage:active {
+  cursor: grabbing;
+}
+
+.timeline-3d-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(126, 214, 246, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 214, 246, 0.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+  opacity: 0.42;
+}
+
+.timeline-3d-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.timeline-3d-canvas-status {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  background: rgba(4, 12, 22, 0.42);
+}
+
+.timeline-3d-detail {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  width: min(310px, calc(100% - 32px));
+  border: 1px solid rgba(76, 239, 255, 0.3);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(13, 31, 50, 0.9), rgba(4, 12, 22, 0.94));
+  color: var(--muted-strong);
+  padding: 12px;
+  box-shadow: var(--shadow), 0 0 26px rgba(76, 239, 255, 0.1);
+  backdrop-filter: blur(14px);
+}
+
+.timeline-3d-detail > span,
+.timeline-3d-detail dt,
+.timeline-3d-detail em {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.timeline-3d-detail strong {
+  color: var(--ink-strong);
+  font-size: 1.2rem;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-3d-detail dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.timeline-3d-detail dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid rgba(111, 180, 216, 0.14);
+  padding-top: 6px;
+}
+
+.timeline-3d-detail dd {
+  margin: 0;
+  color: var(--ink-strong);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-3d-detail dd.is-positive {
+  color: var(--green);
+}
+
+.timeline-3d-detail dd.is-negative,
+.timeline-3d-detail em.status-red {
+  color: var(--red);
+}
+
+.timeline-3d-detail em.status-yellow {
+  color: var(--gold);
+}
+
+.timeline-3d-detail em.status-green {
+  color: var(--green);
+}
+
+.timeline-3d-detail-streams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline-3d-detail-streams span,
+.timeline-3d-streams button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.timeline-3d-detail-streams span {
+  color: var(--muted-strong);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.timeline-3d-detail-streams i,
+.timeline-3d-streams i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--stream-color);
+  box-shadow: 0 0 12px var(--stream-color);
+}
+
+.timeline-3d-lower {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-3d-streams,
+.timeline-3d-month-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.timeline-3d-month-picker button.status-red {
+  border-color: rgba(255, 101, 114, 0.38);
+}
+
+.timeline-3d-month-picker button.status-yellow {
+  border-color: rgba(255, 215, 130, 0.32);
 }
 
 .dashboard-grid {
@@ -1743,6 +2037,10 @@ input[type="range"] {
     grid-template-columns: 1fr;
   }
 
+  .timeline-3d-toolbar {
+    grid-template-columns: 1fr;
+  }
+
   .metric-grid,
   .control-grid,
   .assumption-grid {
@@ -1790,6 +2088,24 @@ input[type="range"] {
   .section-heading {
     display: grid;
     gap: 10px;
+  }
+
+  .analysis-mode-toggle {
+    width: 100%;
+  }
+
+  .timeline-3d-stage {
+    min-height: 500px;
+  }
+
+  .timeline-3d-detail {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-height: 52%;
+    overflow-y: auto;
   }
 
   .model-stamp {
@@ -1883,6 +2199,7 @@ input[type="range"] {
   .metric-card,
   .scenario-section,
   .control-board,
+  .hologram-section,
   .visual-panel,
   .timeline-section,
   .comparison-section,
@@ -1922,6 +2239,27 @@ input[type="range"] {
 
   .segmented-control {
     gap: 5px;
+  }
+
+  .timeline-3d-stage {
+    min-height: 520px;
+    margin-inline: -14px;
+  }
+
+  .timeline-3d-toolbar,
+  .timeline-3d-lower {
+    gap: 9px;
+  }
+
+  .timeline-3d-camera-controls button,
+  .timeline-3d-streams button,
+  .timeline-3d-month-picker button {
+    min-height: 38px;
+    padding: 0 9px;
+  }
+
+  .timeline-3d-month-picker button {
+    flex: 1 0 calc(16.66% - 7px);
   }
 
   .segmented-control button {
