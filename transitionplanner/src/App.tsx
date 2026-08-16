@@ -5,6 +5,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   CalendarDays,
+  ChevronDown,
   CheckCircle2,
   CircleDollarSign,
   Clock3,
@@ -415,6 +416,24 @@ const PELL_ENROLLMENT_OPTIONS: {
   { value: "full", label: "Full Pell", factor: 1 },
 ];
 
+const RATING_OPTIONS: { value: Rating; label: string }[] = [
+  { value: 80, label: "80%" },
+  { value: 90, label: "90%" },
+  { value: 100, label: "100%" },
+];
+
+const PELL_CASE_OPTIONS: { value: PellCaseId; label: string }[] = Object.entries(PELL_CASES).map(
+  ([value, pellCase]) => ({
+    value: value as PellCaseId,
+    label: `${pellCase.label} - ${formatMoney(pellCase.termAmount)}/term`,
+  }),
+);
+
+const UCX_MODE_OPTIONS: { value: UcxMode; label: string }[] = [
+  { value: "off", label: "Do not rely on UCX" },
+  { value: "ifEligible", label: "Model UCX if eligible" },
+];
+
 const ACTION_PLAN = [
   {
     month: "August 2026",
@@ -708,14 +727,369 @@ function normalizePlannerState(value: unknown): PlannerState | null {
   };
 }
 
+const ReducedMotionContext = React.createContext(false);
+
+function useReducedMotionPreference() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
+
+  React.useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
+function usePrefersReducedMotion() {
+  return React.useContext(ReducedMotionContext);
+}
+
+function useSectionReveal(
+  shellRef: React.RefObject<HTMLElement | null>,
+  prefersReducedMotion: boolean,
+) {
+  const [motionReady, setMotionReady] = React.useState(false);
+
+  React.useEffect(() => {
+    const shell = shellRef.current;
+
+    if (!shell) {
+      return undefined;
+    }
+
+    const sections = Array.from(
+      shell.querySelectorAll<HTMLElement>(
+        [
+          ":scope > .metric-grid",
+          ":scope > .scenario-section",
+          ":scope > .control-board",
+          ":scope > .dashboard-grid",
+          ":scope > .timeline-section",
+          ":scope > .comparison-section",
+          ":scope > .assumptions-section",
+          ":scope > .action-section",
+          ":scope > .source-panel",
+        ].join(", "),
+      ),
+    );
+
+    sections.forEach((section, index) => {
+      section.classList.add("motion-reveal");
+      section.style.setProperty("--reveal-index", String(index));
+    });
+
+    setMotionReady(true);
+
+    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
+      sections.forEach((section) => section.classList.add("is-visible"));
+
+      return () => {
+        sections.forEach((section) => {
+          section.classList.remove("motion-reveal", "is-visible");
+          section.style.removeProperty("--reveal-index");
+        });
+      };
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      {
+        rootMargin: "0px 0px -8% 0px",
+        threshold: 0.14,
+      },
+    );
+
+    sections.forEach((section) => observer.observe(section));
+
+    return () => {
+      observer.disconnect();
+      sections.forEach((section) => {
+        section.classList.remove("motion-reveal", "is-visible");
+        section.style.removeProperty("--reveal-index");
+      });
+    };
+  }, [prefersReducedMotion, shellRef]);
+
+  return motionReady;
+}
+
+function useModelCue(scenarioId: ScenarioId, settings: ModelSettings) {
+  const [modelCue, setModelCue] = React.useState("");
+  const hasMounted = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return undefined;
+    }
+
+    setModelCue("Recalculating model");
+
+    const updatedTimer = window.setTimeout(() => setModelCue("Model updated"), 140);
+    const clearTimer = window.setTimeout(() => setModelCue(""), 620);
+
+    return () => {
+      window.clearTimeout(updatedTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [scenarioId, settings]);
+
+  return modelCue;
+}
+
+type AnimatedNumberProps = {
+  value: number;
+  formatter?: (value: number) => string;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+};
+
+function AnimatedNumber({
+  value,
+  formatter = formatMoney,
+  prefix = "",
+  suffix = "",
+  className,
+}: AnimatedNumberProps) {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [displayValue, setDisplayValue] = React.useState(value);
+  const [isChanging, setIsChanging] = React.useState(false);
+  const displayValueRef = React.useRef(value);
+
+  React.useEffect(() => {
+    const startValue = displayValueRef.current;
+
+    if (Object.is(startValue, value)) {
+      return undefined;
+    }
+
+    if (prefersReducedMotion) {
+      displayValueRef.current = value;
+      setDisplayValue(value);
+      setIsChanging(false);
+      return undefined;
+    }
+
+    let animationFrame = 0;
+    let settleTimer = 0;
+    const duration = 440;
+    const startedAt = performance.now();
+
+    setIsChanging(true);
+
+    const animate = (timestamp: number) => {
+      const progress = Math.min(1, (timestamp - startedAt) / duration);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      const nextValue = startValue + (value - startValue) * easedProgress;
+
+      displayValueRef.current = nextValue;
+      setDisplayValue(nextValue);
+
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      displayValueRef.current = value;
+      setDisplayValue(value);
+      settleTimer = window.setTimeout(() => setIsChanging(false), 160);
+    };
+
+    animationFrame = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(settleTimer);
+    };
+  }, [prefersReducedMotion, value]);
+
+  return (
+    <span className={`animated-number${isChanging ? " is-changing" : ""}${className ? ` ${className}` : ""}`}>
+      {prefix}
+      {formatter(displayValue)}
+      {suffix}
+    </span>
+  );
+}
+
+type SelectOption<T extends string | number> = {
+  value: T;
+  label: string;
+};
+
+type SelectControlProps<T extends string | number> = {
+  label: string;
+  value: T;
+  options: SelectOption<T>[];
+  onChange: (value: T) => void;
+};
+
+function SelectControl<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+}: SelectControlProps<T>) {
+  const fieldId = React.useId();
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const [isOpen, setIsOpen] = React.useState(false);
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => Object.is(option.value, value)),
+  );
+  const [activeIndex, setActiveIndex] = React.useState(selectedIndex);
+  const selectedOption = options[selectedIndex] ?? options[0];
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setActiveIndex(selectedIndex);
+    }
+  }, [isOpen, selectedIndex]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [isOpen]);
+
+  const chooseOption = (nextIndex: number) => {
+    const nextOption = options[nextIndex];
+
+    if (!nextOption) {
+      return;
+    }
+
+    onChange(nextOption.value);
+    setIsOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const moveActiveOption = (direction: number) => {
+    setActiveIndex((current) => (current + direction + options.length) % options.length);
+  };
+
+  return (
+    <div className={`select-field${isOpen ? " is-open" : ""}`} ref={rootRef}>
+      <span className="select-field-label" id={`${fieldId}-label`}>
+        {label}
+      </span>
+      <button
+        aria-controls={`${fieldId}-listbox`}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-labelledby={`${fieldId}-label ${fieldId}-value`}
+        className="themed-select-trigger"
+        onClick={() => setIsOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            if (!isOpen) {
+              setIsOpen(true);
+              setActiveIndex(selectedIndex);
+              return;
+            }
+            moveActiveOption(1);
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!isOpen) {
+              setIsOpen(true);
+              setActiveIndex(selectedIndex);
+              return;
+            }
+            moveActiveOption(-1);
+          }
+
+          if (event.key === "Home" && isOpen) {
+            event.preventDefault();
+            setActiveIndex(0);
+          }
+
+          if (event.key === "End" && isOpen) {
+            event.preventDefault();
+            setActiveIndex(options.length - 1);
+          }
+
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (isOpen) {
+              chooseOption(activeIndex);
+              return;
+            }
+            setIsOpen(true);
+          }
+
+          if (event.key === "Escape" && isOpen) {
+            event.preventDefault();
+            setIsOpen(false);
+          }
+        }}
+        ref={buttonRef}
+        type="button"
+      >
+        <span id={`${fieldId}-value`}>{selectedOption?.label}</span>
+        <span className="themed-select-arrow" aria-hidden="true" />
+      </button>
+      {isOpen ? (
+        <div className="themed-select-list" id={`${fieldId}-listbox`} role="listbox">
+          {options.map((option, index) => (
+            <button
+              aria-selected={Object.is(option.value, value)}
+              className={index === activeIndex ? "is-active" : ""}
+              id={`${fieldId}-option-${index}`}
+              key={String(option.value)}
+              onClick={() => chooseOption(index)}
+              onMouseEnter={() => setActiveIndex(index)}
+              role="option"
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function App() {
+  const shellRef = React.useRef<HTMLElement | null>(null);
+  const prefersReducedMotion = useReducedMotionPreference();
   const [{ scenarioId, settings }, setPlannerState] =
     React.useState<PlannerState>(loadPlannerState);
+  const [hoveredMonth, setHoveredMonth] = React.useState<MonthId | null>(null);
 
   const series = React.useMemo(() => calculateSeries(settings), [settings]);
   const summary = React.useMemo(() => summarizeSeries(series, settings), [series, settings]);
   const scenarioRows = React.useMemo(() => buildScenarioRows(settings), [settings]);
   const workPreview = React.useMemo(() => getWorkPreview(settings), [settings]);
+  const modelCue = useModelCue(scenarioId, settings);
+  const motionReady = useSectionReveal(shellRef, prefersReducedMotion);
 
   React.useEffect(() => {
     savePlannerState({ scenarioId, settings });
@@ -765,7 +1139,12 @@ function App() {
   };
 
   return (
-    <main className="planner-shell">
+    <ReducedMotionContext.Provider value={prefersReducedMotion}>
+    <main className={`planner-shell${motionReady ? " motion-ready" : ""}`} ref={shellRef}>
+      <div className={`model-cue${modelCue ? " is-visible" : ""}`} aria-hidden="true">
+        {modelCue}
+      </div>
+
       <Header summary={summary} />
 
       <section className="metric-grid" aria-label="Planner summary">
@@ -778,21 +1157,32 @@ function App() {
         <MetricCard
           icon={<AlertTriangle aria-hidden="true" />}
           label="Lowest month in view"
-          value={`${summary.lowestMonth.short}: ${formatMoney(summary.lowestMonth.effective)}`}
-          detail={`${summary.lowestMonth.gapToFloor >= 0 ? "+" : ""}${formatMoney(
-            summary.lowestMonth.gapToFloor,
-          )} vs essential expenses after tuition reserve.`}
+          value={
+            <AnimatedNumber
+              value={summary.lowestMonth.effective}
+              prefix={`${summary.lowestMonth.short}: `}
+            />
+          }
+          detail={
+            <>
+              <AnimatedNumber
+                value={summary.lowestMonth.gapToFloor}
+                prefix={summary.lowestMonth.gapToFloor >= 0 ? "+" : ""}
+              />{" "}
+              vs essential expenses after tuition reserve.
+            </>
+          }
         />
         <MetricCard
           icon={<PiggyBank aria-hidden="true" />}
           label="Reserve needed after DOS"
-          value={formatMoney(summary.reserveNeeded)}
+          value={<AnimatedNumber value={summary.reserveNeeded} />}
           detail="Maximum cumulative shortfall against essential expenses from December-July."
         />
         <MetricCard
           icon={<WalletCards aria-hidden="true" />}
           label="VA catch-up modeled"
-          value={formatMoney(summary.potentialBackpay)}
+          value={<AnimatedNumber value={summary.potentialBackpay} />}
           detail="One-time accrued cash in the selected decision month; regular VA starts the next month."
         />
       </section>
@@ -833,16 +1223,32 @@ function App() {
       />
 
       <section className="dashboard-grid" aria-label="Income and risk visuals">
-        <IncomeLayerChart series={series} settings={settings} />
-        <MonthlyStressGrid series={series} settings={settings} />
+        <IncomeLayerChart
+          series={series}
+          settings={settings}
+          hoveredMonth={hoveredMonth}
+          onMonthFocus={setHoveredMonth}
+        />
+        <MonthlyStressGrid
+          series={series}
+          settings={settings}
+          hoveredMonth={hoveredMonth}
+          onMonthFocus={setHoveredMonth}
+        />
       </section>
 
-      <MasterTimeline settings={settings} series={series} />
+      <MasterTimeline
+        settings={settings}
+        series={series}
+        hoveredMonth={hoveredMonth}
+        onMonthFocus={setHoveredMonth}
+      />
       <ScenarioComparison rows={scenarioRows} selectedScenario={scenarioId} />
       <AssumptionsPanel settings={settings} />
       <ActionPlan />
       <SourcePanel />
     </main>
+    </ReducedMotionContext.Provider>
   );
 }
 
@@ -886,8 +1292,8 @@ function Header({ summary }: HeaderProps) {
 type MetricCardProps = {
   icon: React.ReactNode;
   label: string;
-  value: string;
-  detail: string;
+  value: React.ReactNode;
+  detail: React.ReactNode;
 };
 
 function MetricCard({ icon, label, value, detail }: MetricCardProps) {
@@ -895,7 +1301,7 @@ function MetricCard({ icon, label, value, detail }: MetricCardProps) {
     <article className="metric-card">
       <div className="metric-icon">{icon}</div>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong className="metric-value">{value}</strong>
       <p>{detail}</p>
     </article>
   );
@@ -908,6 +1314,8 @@ type ControlPanelProps = {
 };
 
 function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelProps) {
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const controlGridId = React.useId();
   const vaMonthly = getVaMonthly(settings);
   const vaCatchUp = getPotentialBackpay(settings);
   const recurringVaMonth = getRecurringVaStartLabel(settings.vaStart);
@@ -915,33 +1323,65 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
   const pellTermAmount = getPellTermAmount(settings);
   const schoolIsFullTime = settings.schoolCUs >= 18;
   const mgibMonthly = getMgibMonthly(settings);
+  const pellEnrollmentLabel =
+    PELL_ENROLLMENT_OPTIONS.find((option) => option.value === settings.pellEnrollment)?.label ??
+    "No Pell";
+  const workSummary =
+    workPreview.monthlyGross > 0 ? `${formatMoney(workPreview.monthlyNet)}/mo net` : "No work income";
 
   return (
-    <section className="control-board" aria-labelledby="controls-heading">
+    <section
+      className={`control-board${isExpanded ? " is-expanded" : " is-collapsed"}`}
+      aria-labelledby="controls-heading"
+    >
       <div className="section-heading">
         <div>
           <p className="eyebrow">Model inputs</p>
           <h2 id="controls-heading">Stress-test the assumptions</h2>
         </div>
+        <button
+          className="section-toggle"
+          type="button"
+          aria-controls={controlGridId}
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((current) => !current)}
+        >
+          <span>{isExpanded ? "Hide inputs" : "Show inputs"}</span>
+          <ChevronDown aria-hidden="true" />
+        </button>
       </div>
 
-      <div className="control-grid">
+      <div className="control-summary-strip" aria-label="Current model inputs">
+        <span>
+          <strong>VA</strong>
+          {settings.rating}%{settings.smcK ? " + SMC-K" : ""}
+        </span>
+        <span>
+          <strong>School</strong>
+          {settings.schoolCUs} CUs / {pellEnrollmentLabel}
+        </span>
+        <span>
+          <strong>Work</strong>
+          {workSummary}
+        </span>
+        <span>
+          <strong>Floor</strong>
+          {formatMoney(settings.essentialExpenseTarget)}/mo
+        </span>
+      </div>
+
+      <div className="control-grid" id={controlGridId} hidden={!isExpanded}>
         <fieldset>
           <legend>
             <Landmark aria-hidden="true" />
             Benefits
           </legend>
-          <label>
-            <span>VA rating</span>
-            <select
-              value={settings.rating}
-              onChange={(event) => onSettingChange("rating", Number(event.target.value) as Rating)}
-            >
-              <option value={80}>80%</option>
-              <option value={90}>90%</option>
-              <option value={100}>100%</option>
-            </select>
-          </label>
+          <SelectControl
+            label="VA rating"
+            value={settings.rating}
+            options={RATING_OPTIONS}
+            onChange={(value) => onSettingChange("rating", value)}
+          />
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -950,19 +1390,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             />
             <span>Include SMC-K ({DETAILED_MONEY_FORMATTER.format(SMC_K_RATE)}/mo)</span>
           </label>
-          <label>
-            <span>VA decision / catch-up month</span>
-            <select
-              value={settings.vaStart}
-              onChange={(event) => onSettingChange("vaStart", event.target.value as VaStart)}
-            >
-              {VA_START_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="VA decision / catch-up month"
+            value={settings.vaStart}
+            options={VA_START_OPTIONS}
+            onChange={(value) => onSettingChange("vaStart", value)}
+          />
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -973,10 +1406,17 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </label>
           <div className="inline-result">
             <span>VA planning amount</span>
-            <strong>{formatDetailedMoney(vaMonthly)}/mo</strong>
+            <strong>
+              <AnimatedNumber value={vaMonthly} formatter={formatDetailedMoney} suffix="/mo" />
+            </strong>
             <small>
               {settings.includeVaBackpay && vaCatchUp > 0
-                ? `${formatDetailedMoney(vaCatchUp)} catch-up in ${getVaDecisionMonthLabel(settings.vaStart)}.`
+                ? (
+                    <>
+                      <AnimatedNumber value={vaCatchUp} formatter={formatDetailedMoney} /> catch-up in{" "}
+                      {getVaDecisionMonthLabel(settings.vaStart)}.
+                    </>
+                  )
                 : "No catch-up cash modeled."}{" "}
               {recurringVaMonth ? `Regular VA cash starts ${recurringVaMonth}.` : "No VA cash by July."}
             </small>
@@ -1015,40 +1455,38 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               onChange={(event) => onSettingChange("mgibMonthlyRate", Number(event.target.value))}
             />
           </label>
-          <label>
-            <span>Pell case</span>
-            <select
-              value={settings.pellCase}
-              onChange={(event) => onSettingChange("pellCase", event.target.value as PellCaseId)}
-            >
-              {Object.entries(PELL_CASES).map(([key, pellCase]) => (
-                <option key={key} value={key}>
-                  {pellCase.label} - {formatMoney(pellCase.termAmount)}/term
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Pell enrollment status</span>
-            <select
-              value={settings.pellEnrollment}
-              onChange={(event) => onSettingChange("pellEnrollment", event.target.value as PellEnrollment)}
-            >
-              {PELL_ENROLLMENT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="Pell case"
+            value={settings.pellCase}
+            options={PELL_CASE_OPTIONS}
+            onChange={(value) => onSettingChange("pellCase", value)}
+          />
+          <SelectControl
+            label="Pell enrollment status"
+            value={settings.pellEnrollment}
+            options={PELL_ENROLLMENT_OPTIONS}
+            onChange={(value) => onSettingChange("pellEnrollment", value)}
+          />
           <div className="inline-result">
             <span>MGIB and Pell posture</span>
-            <strong>{schoolIsFullTime ? `${formatMoney(mgibMonthly)}/mo MGIB` : "MGIB full-time not modeled"}</strong>
+            <strong>
+              {schoolIsFullTime ? (
+                <>
+                  <AnimatedNumber value={mgibMonthly} suffix="/mo" /> MGIB
+                </>
+              ) : (
+                "MGIB full-time not modeled"
+              )}
+            </strong>
             <small>
-              Pell is separate: {formatMoney(pellTermAmount)}/term{" "}
+              Pell is separate: <AnimatedNumber value={pellTermAmount} suffix="/term" />{" "}
               {settings.planningMode === "cashTiming"
                 ? "as a term-start cash event."
-                : `or ${formatMoney(pellMonthly)}/mo as a budget equivalent.`}
+                : (
+                    <>
+                      or <AnimatedNumber value={pellMonthly} suffix="/mo" /> as a budget equivalent.
+                    </>
+                  )}
             </small>
           </div>
           <p className="field-note">
@@ -1057,24 +1495,17 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </p>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="compact-fieldset work-bridge-fieldset">
           <legend>
             <BriefcaseBusiness aria-hidden="true" />
             Work bridge
           </legend>
-          <label>
-            <span>Civilian work</span>
-            <select
-              value={settings.workType}
-              onChange={(event) => onSettingChange("workType", event.target.value as WorkType)}
-            >
-              {WORK_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="Civilian work"
+            value={settings.workType}
+            options={WORK_OPTIONS}
+            onChange={(value) => onSettingChange("workType", value)}
+          />
           <div className="segmented-label">Civilian pay basis</div>
           <div className="segmented-control two-up" role="group" aria-label="Civilian pay basis">
             <button
@@ -1093,7 +1524,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </button>
           </div>
           {settings.payMode === "hourly" ? (
-            <>
+            <div className="field-pair compact-number-pair">
               <label>
                 <span>Hourly wage</span>
                 <input
@@ -1120,7 +1551,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
                   }
                 />
               </label>
-            </>
+            </div>
           ) : (
             <label>
               <span>Yearly wage / salary</span>
@@ -1134,72 +1565,53 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </label>
           )}
           {settings.workType === "contract" ? (
-            <label>
-              <span>Contract ends</span>
-              <select
-                value={settings.contractEnd}
-                onChange={(event) =>
-                  onSettingChange("contractEnd", event.target.value as ContractEnd)
-                }
-              >
-                {CONTRACT_END_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectControl
+              label="Contract ends"
+              value={settings.contractEnd}
+              options={CONTRACT_END_OPTIONS}
+              onChange={(value) => onSettingChange("contractEnd", value)}
+            />
           ) : null}
-          <label>
-            <span>Tax treatment</span>
-            <select
+          <div className="field-pair">
+            <SelectControl
+              label="Tax treatment"
               value={settings.payrollType}
-              onChange={(event) => onSettingChange("payrollType", event.target.value as PayrollType)}
-            >
-              {PAYROLL_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Filing status</span>
-            <select
+              options={PAYROLL_TYPE_OPTIONS}
+              onChange={(value) => onSettingChange("payrollType", value)}
+            />
+            <SelectControl
+              label="Filing status"
               value={settings.filingStatus}
-              onChange={(event) => onSettingChange("filingStatus", event.target.value as FilingStatus)}
-            >
-              {FILING_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Pre-tax deductions/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={25}
-              value={settings.pretaxMonthlyDeductions}
-              onChange={(event) =>
-                onSettingChange("pretaxMonthlyDeductions", Number(event.target.value))
-              }
+              options={FILING_STATUS_OPTIONS}
+              onChange={(value) => onSettingChange("filingStatus", value)}
             />
-          </label>
-          <label>
-            <span>After-tax deductions/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={25}
-              value={settings.posttaxMonthlyDeductions}
-              onChange={(event) =>
-                onSettingChange("posttaxMonthlyDeductions", Number(event.target.value))
-              }
-            />
-          </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Pre-tax deductions/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={25}
+                value={settings.pretaxMonthlyDeductions}
+                onChange={(event) =>
+                  onSettingChange("pretaxMonthlyDeductions", Number(event.target.value))
+                }
+              />
+            </label>
+            <label>
+              <span>After-tax deductions/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={25}
+                value={settings.posttaxMonthlyDeductions}
+                onChange={(event) =>
+                  onSettingChange("posttaxMonthlyDeductions", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
           <label>
             <span>Extra tax reserve %</span>
             <input
@@ -1217,13 +1629,17 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             <span>Texas / San Antonio preview</span>
             <strong>
               {workPreview.monthlyGross > 0
-                ? `${formatMoney(workPreview.monthlyNet)}/mo estimated take-home`
+                ? (
+                    <>
+                      <AnimatedNumber value={workPreview.monthlyNet} suffix="/mo" /> estimated take-home
+                    </>
+                  )
                 : "No work income"}
             </strong>
             {workPreview.monthlyGross > 0 ? (
               <small>
-                {formatMoney(workPreview.monthlyGross)}/mo gross.{" "}
-                {formatMoney(workPreview.taxAndDeductionMonthly)}/mo tax and deductions.{" "}
+                <AnimatedNumber value={workPreview.monthlyGross} suffix="/mo" /> gross.{" "}
+                <AnimatedNumber value={workPreview.taxAndDeductionMonthly} suffix="/mo" /> tax and deductions.{" "}
                 {Math.round(workPreview.netRate * 100)}% net.
               </small>
             ) : null}
@@ -1234,7 +1650,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </p>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="compact-fieldset risk-switches-fieldset">
           <legend>
             <SlidersHorizontal aria-hidden="true" />
             Risk switches
@@ -1256,100 +1672,93 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               Budget equiv.
             </button>
           </div>
-          <label>
-            <span>UCX model</span>
-            <select
-              value={settings.ucxMode}
-              onChange={(event) => onSettingChange("ucxMode", event.target.value as UcxMode)}
-            >
-              <option value="off">Do not rely on UCX</option>
-              <option value="ifEligible">Model UCX if eligible</option>
-            </select>
-          </label>
-          <label>
-            <span>UCX weekly amount</span>
-            <input
-              type="number"
-              min={0}
-              max={UCX_WEEKLY_MAX}
-              step={5}
-              value={settings.ucxWeeklyBenefit}
-              onChange={(event) => onSettingChange("ucxWeeklyBenefit", Number(event.target.value))}
-            />
-          </label>
-          <label>
-            <span>Essential expenses/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.essentialExpenseTarget}
-              onChange={(event) =>
-                onSettingChange("essentialExpenseTarget", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Normal lifestyle/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.normalLifestyleTarget}
-              onChange={(event) =>
-                onSettingChange("normalLifestyleTarget", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Ideal / savings target</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.idealSavingsTarget}
-              onChange={(event) =>
-                onSettingChange("idealSavingsTarget", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Dec. 1 paycheck</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.decemberFirstPaycheck}
-              onChange={(event) =>
-                onSettingChange("decemberFirstPaycheck", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Final military pay</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={Math.round(settings.finalMilitaryPay)}
-              onChange={(event) => onSettingChange("finalMilitaryPay", Number(event.target.value))}
-            />
-          </label>
-          <label>
-            <span>Final pay timing</span>
-            <select
-              value={settings.finalMilitaryPayMonth}
-              onChange={(event) =>
-                onSettingChange("finalMilitaryPayMonth", event.target.value as FinalPayMonth)
-              }
-            >
-              {FINAL_PAY_MONTH_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectControl
+            label="UCX model"
+            value={settings.ucxMode}
+            options={UCX_MODE_OPTIONS}
+            onChange={(value) => onSettingChange("ucxMode", value)}
+          />
+          <div className="field-pair">
+            <label>
+              <span>UCX weekly amount</span>
+              <input
+                type="number"
+                min={0}
+                max={UCX_WEEKLY_MAX}
+                step={5}
+                value={settings.ucxWeeklyBenefit}
+                onChange={(event) => onSettingChange("ucxWeeklyBenefit", Number(event.target.value))}
+              />
+            </label>
+            <label>
+              <span>Essential expenses/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.essentialExpenseTarget}
+                onChange={(event) =>
+                  onSettingChange("essentialExpenseTarget", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Normal lifestyle/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.normalLifestyleTarget}
+                onChange={(event) =>
+                  onSettingChange("normalLifestyleTarget", Number(event.target.value))
+                }
+              />
+            </label>
+            <label>
+              <span>Ideal / savings target</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.idealSavingsTarget}
+                onChange={(event) =>
+                  onSettingChange("idealSavingsTarget", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Dec. 1 paycheck</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.decemberFirstPaycheck}
+                onChange={(event) =>
+                  onSettingChange("decemberFirstPaycheck", Number(event.target.value))
+                }
+              />
+            </label>
+            <label>
+              <span>Final military pay</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={Math.round(settings.finalMilitaryPay)}
+                onChange={(event) => onSettingChange("finalMilitaryPay", Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <SelectControl
+            label="Final pay timing"
+            value={settings.finalMilitaryPayMonth}
+            options={FINAL_PAY_MONTH_OPTIONS}
+            onChange={(value) => onSettingChange("finalMilitaryPayMonth", value)}
+          />
           <label>
             <span>Temporary DFAS deductions across next 2 checks</span>
             <input
@@ -1364,7 +1773,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </label>
           <div className="inline-result">
             <span>UCX amount modeled</span>
-            <strong>{formatMoney((settings.ucxWeeklyBenefit * 52) / 12 * UCX_TAX_HOLD_BACK)}/mo</strong>
+            <strong>
+              <AnimatedNumber
+                value={(settings.ucxWeeklyBenefit * 52) / 12 * UCX_TAX_HOLD_BACK}
+                suffix="/mo"
+              />
+            </strong>
             <small>
               Cash view keeps term Pell and WGU tuition as February events; budget view smooths
               them across the term.
@@ -1383,15 +1797,23 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
 function IncomeLayerChart({
   series,
   settings,
+  hoveredMonth,
+  onMonthFocus,
 }: {
   series: MonthModel[];
   settings: ModelSettings;
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
 }) {
+  const [hoveredStream, setHoveredStream] = React.useState<IncomeKey | null>(null);
   const targets = getExpenseTargets(settings);
   const maxTotal = Math.max(targets.ideal, ...series.map((month) => month.total)) * 1.08;
 
   return (
-    <section className="visual-panel income-panel" aria-labelledby="income-heading">
+    <section
+      className={`visual-panel income-panel${hoveredStream ? " has-stream-focus" : ""}`}
+      aria-labelledby="income-heading"
+    >
       <div className="section-heading">
         <div>
           <p className="eyebrow">Income layer visual</p>
@@ -1399,17 +1821,32 @@ function IncomeLayerChart({
         </div>
         <div className="legend" aria-label="Income legend">
           {INCOME_ORDER.map((key) => (
-            <span key={key}>
+            <button
+              className={`legend-item${hoveredStream === key ? " is-active" : ""}`}
+              type="button"
+              key={key}
+              aria-pressed={hoveredStream === key}
+              onPointerEnter={() => setHoveredStream(key)}
+              onPointerLeave={() => setHoveredStream(null)}
+              onFocus={() => setHoveredStream(key)}
+              onBlur={() => setHoveredStream(null)}
+              onClick={() => setHoveredStream((current) => (current === key ? null : key))}
+            >
               <i className={`legend-dot stream-${key}`} aria-hidden="true" />
               {INCOME_LABELS[key]}
-            </span>
+            </button>
           ))}
         </div>
       </div>
 
       <div className="income-chart" role="img" aria-label="Stacked monthly income chart">
         {series.map((month) => (
-          <div className="stack-column" key={month.id}>
+          <div
+            className={`stack-column${hoveredMonth === month.id ? " is-month-focused" : ""}`}
+            key={month.id}
+            onPointerEnter={() => onMonthFocus(month.id)}
+            onPointerLeave={() => onMonthFocus(null)}
+          >
             <div
               className="stack-track"
               aria-label={`${month.label}: ${formatMoney(month.total)} total planning resources`}
@@ -1427,15 +1864,37 @@ function IncomeLayerChart({
                 return (
                   <span
                     key={key}
-                    className={`stack-segment stream-${key}`}
+                    className={`stack-segment stream-${key}${
+                      hoveredStream === key ? " is-stream-focused" : ""
+                    }${hoveredStream && hoveredStream !== key ? " is-stream-muted" : ""}`}
                     style={{ height: `${Math.max(1.6, (amount / maxTotal) * 100)}%` }}
                     title={`${INCOME_LABELS[key]}: ${formatMoney(amount)}`}
                   />
                 );
               })}
             </div>
+            <div className="chart-tooltip" aria-hidden="true">
+              <strong>{month.label}</strong>
+              {INCOME_ORDER.map((key) => {
+                const amount = month.streams[key];
+
+                if (amount <= 0) {
+                  return null;
+                }
+
+                return (
+                  <span key={key}>
+                    <i className={`legend-dot stream-${key}`} aria-hidden="true" />
+                    {INCOME_LABELS[key]}: {formatMoney(amount)}
+                  </span>
+                );
+              })}
+              <em>Total: {formatMoney(month.total)}</em>
+            </div>
             <span className="stack-month">{month.short}</span>
-            <strong>{formatMoney(month.total)}</strong>
+            <strong>
+              <AnimatedNumber value={month.total} />
+            </strong>
           </div>
         ))}
       </div>
@@ -1459,9 +1918,13 @@ function IncomeLayerChart({
 function MonthlyStressGrid({
   series,
   settings,
+  hoveredMonth,
+  onMonthFocus,
 }: {
   series: MonthModel[];
   settings: ModelSettings;
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
 }) {
   const targets = getExpenseTargets(settings);
 
@@ -1475,12 +1938,22 @@ function MonthlyStressGrid({
       </div>
       <div className="stress-grid">
         {series.map((month) => (
-          <article className={`stress-tile status-${month.status}`} key={month.id}>
+          <article
+            className={`stress-tile status-${month.status}${hoveredMonth === month.id ? " is-month-focused" : ""}`}
+            key={month.id}
+            onPointerEnter={() => onMonthFocus(month.id)}
+            onPointerLeave={() => onMonthFocus(null)}
+          >
             <span>{month.short}</span>
-            <strong>{formatMoney(month.effective)}</strong>
+            <strong>
+              <AnimatedNumber value={month.effective} />
+            </strong>
             <small>
-              {month.gapToFloor >= 0 ? "+" : ""}
-              {formatMoney(month.gapToFloor)} vs essential
+              <AnimatedNumber
+                value={month.gapToFloor}
+                prefix={month.gapToFloor >= 0 ? "+" : ""}
+              />{" "}
+              vs essential
             </small>
           </article>
         ))}
@@ -1506,9 +1979,13 @@ function MonthlyStressGrid({
 function MasterTimeline({
   settings,
   series,
+  hoveredMonth,
+  onMonthFocus,
 }: {
   settings: ModelSettings;
   series: MonthModel[];
+  hoveredMonth: MonthId | null;
+  onMonthFocus: (monthId: MonthId | null) => void;
 }) {
   const rows = buildTimelineRows(settings, series);
 
@@ -1525,7 +2002,13 @@ function MasterTimeline({
           <div className="timeline-header" role="row">
             <span role="columnheader">Layer</span>
             {MONTHS.map((month) => (
-              <span role="columnheader" key={month.id}>
+              <span
+                className={hoveredMonth === month.id ? "is-month-focused" : ""}
+                role="columnheader"
+                key={month.id}
+                onPointerEnter={() => onMonthFocus(month.id)}
+                onPointerLeave={() => onMonthFocus(null)}
+              >
                 {month.short}
               </span>
             ))}
@@ -1534,7 +2017,13 @@ function MasterTimeline({
             <div className="timeline-row" role="row" key={row.label}>
               <span role="rowheader">{row.label}</span>
               {row.cells.map((cell) => (
-                <span className={`timeline-cell ${cell.kind}`} role="cell" key={cell.monthId}>
+                <span
+                  className={`timeline-cell ${cell.kind}${hoveredMonth === cell.monthId ? " is-month-focused" : ""}`}
+                  role="cell"
+                  key={cell.monthId}
+                  onPointerEnter={() => onMonthFocus(cell.monthId)}
+                  onPointerLeave={() => onMonthFocus(null)}
+                >
                   {cell.label}
                 </span>
               ))}
@@ -1598,9 +2087,15 @@ function ScenarioComparison({
                 <td>
                   <strong>{row.label}</strong>
                 </td>
-                <td>{formatMoney(row.average)}</td>
-                <td>{formatMoney(row.minimum)}</td>
-                <td>{formatMoney(row.reserveNeeded)}</td>
+                <td>
+                  <AnimatedNumber value={row.average} />
+                </td>
+                <td>
+                  <AnimatedNumber value={row.minimum} />
+                </td>
+                <td>
+                  <AnimatedNumber value={row.reserveNeeded} />
+                </td>
                 <td>{row.dangerMonths}</td>
                 <td>{row.stress}</td>
                 <td>{row.schoolTime}</td>
