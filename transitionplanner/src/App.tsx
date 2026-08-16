@@ -5,6 +5,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   CalendarDays,
+  ChevronDown,
   CheckCircle2,
   CircleDollarSign,
   Clock3,
@@ -1313,6 +1314,8 @@ type ControlPanelProps = {
 };
 
 function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelProps) {
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const controlGridId = React.useId();
   const vaMonthly = getVaMonthly(settings);
   const vaCatchUp = getPotentialBackpay(settings);
   const recurringVaMonth = getRecurringVaStartLabel(settings.vaStart);
@@ -1320,17 +1323,54 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
   const pellTermAmount = getPellTermAmount(settings);
   const schoolIsFullTime = settings.schoolCUs >= 18;
   const mgibMonthly = getMgibMonthly(settings);
+  const pellEnrollmentLabel =
+    PELL_ENROLLMENT_OPTIONS.find((option) => option.value === settings.pellEnrollment)?.label ??
+    "No Pell";
+  const workSummary =
+    workPreview.monthlyGross > 0 ? `${formatMoney(workPreview.monthlyNet)}/mo net` : "No work income";
 
   return (
-    <section className="control-board" aria-labelledby="controls-heading">
+    <section
+      className={`control-board${isExpanded ? " is-expanded" : " is-collapsed"}`}
+      aria-labelledby="controls-heading"
+    >
       <div className="section-heading">
         <div>
           <p className="eyebrow">Model inputs</p>
           <h2 id="controls-heading">Stress-test the assumptions</h2>
         </div>
+        <button
+          className="section-toggle"
+          type="button"
+          aria-controls={controlGridId}
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((current) => !current)}
+        >
+          <span>{isExpanded ? "Hide inputs" : "Show inputs"}</span>
+          <ChevronDown aria-hidden="true" />
+        </button>
       </div>
 
-      <div className="control-grid">
+      <div className="control-summary-strip" aria-label="Current model inputs">
+        <span>
+          <strong>VA</strong>
+          {settings.rating}%{settings.smcK ? " + SMC-K" : ""}
+        </span>
+        <span>
+          <strong>School</strong>
+          {settings.schoolCUs} CUs / {pellEnrollmentLabel}
+        </span>
+        <span>
+          <strong>Work</strong>
+          {workSummary}
+        </span>
+        <span>
+          <strong>Floor</strong>
+          {formatMoney(settings.essentialExpenseTarget)}/mo
+        </span>
+      </div>
+
+      <div className="control-grid" id={controlGridId} hidden={!isExpanded}>
         <fieldset>
           <legend>
             <Landmark aria-hidden="true" />
@@ -1455,7 +1495,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </p>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="compact-fieldset work-bridge-fieldset">
           <legend>
             <BriefcaseBusiness aria-hidden="true" />
             Work bridge
@@ -1484,7 +1524,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </button>
           </div>
           {settings.payMode === "hourly" ? (
-            <>
+            <div className="field-pair compact-number-pair">
               <label>
                 <span>Hourly wage</span>
                 <input
@@ -1511,7 +1551,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
                   }
                 />
               </label>
-            </>
+            </div>
           ) : (
             <label>
               <span>Yearly wage / salary</span>
@@ -1532,42 +1572,46 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               onChange={(value) => onSettingChange("contractEnd", value)}
             />
           ) : null}
-          <SelectControl
-            label="Tax treatment"
-            value={settings.payrollType}
-            options={PAYROLL_TYPE_OPTIONS}
-            onChange={(value) => onSettingChange("payrollType", value)}
-          />
-          <SelectControl
-            label="Filing status"
-            value={settings.filingStatus}
-            options={FILING_STATUS_OPTIONS}
-            onChange={(value) => onSettingChange("filingStatus", value)}
-          />
-          <label>
-            <span>Pre-tax deductions/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={25}
-              value={settings.pretaxMonthlyDeductions}
-              onChange={(event) =>
-                onSettingChange("pretaxMonthlyDeductions", Number(event.target.value))
-              }
+          <div className="field-pair">
+            <SelectControl
+              label="Tax treatment"
+              value={settings.payrollType}
+              options={PAYROLL_TYPE_OPTIONS}
+              onChange={(value) => onSettingChange("payrollType", value)}
             />
-          </label>
-          <label>
-            <span>After-tax deductions/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={25}
-              value={settings.posttaxMonthlyDeductions}
-              onChange={(event) =>
-                onSettingChange("posttaxMonthlyDeductions", Number(event.target.value))
-              }
+            <SelectControl
+              label="Filing status"
+              value={settings.filingStatus}
+              options={FILING_STATUS_OPTIONS}
+              onChange={(value) => onSettingChange("filingStatus", value)}
             />
-          </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Pre-tax deductions/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={25}
+                value={settings.pretaxMonthlyDeductions}
+                onChange={(event) =>
+                  onSettingChange("pretaxMonthlyDeductions", Number(event.target.value))
+                }
+              />
+            </label>
+            <label>
+              <span>After-tax deductions/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={25}
+                value={settings.posttaxMonthlyDeductions}
+                onChange={(event) =>
+                  onSettingChange("posttaxMonthlyDeductions", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
           <label>
             <span>Extra tax reserve %</span>
             <input
@@ -1606,7 +1650,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </p>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="compact-fieldset risk-switches-fieldset">
           <legend>
             <SlidersHorizontal aria-hidden="true" />
             Risk switches
@@ -1634,75 +1678,81 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             options={UCX_MODE_OPTIONS}
             onChange={(value) => onSettingChange("ucxMode", value)}
           />
-          <label>
-            <span>UCX weekly amount</span>
-            <input
-              type="number"
-              min={0}
-              max={UCX_WEEKLY_MAX}
-              step={5}
-              value={settings.ucxWeeklyBenefit}
-              onChange={(event) => onSettingChange("ucxWeeklyBenefit", Number(event.target.value))}
-            />
-          </label>
-          <label>
-            <span>Essential expenses/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.essentialExpenseTarget}
-              onChange={(event) =>
-                onSettingChange("essentialExpenseTarget", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Normal lifestyle/mo</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.normalLifestyleTarget}
-              onChange={(event) =>
-                onSettingChange("normalLifestyleTarget", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Ideal / savings target</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.idealSavingsTarget}
-              onChange={(event) =>
-                onSettingChange("idealSavingsTarget", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Dec. 1 paycheck</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={settings.decemberFirstPaycheck}
-              onChange={(event) =>
-                onSettingChange("decemberFirstPaycheck", Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            <span>Final military pay</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={Math.round(settings.finalMilitaryPay)}
-              onChange={(event) => onSettingChange("finalMilitaryPay", Number(event.target.value))}
-            />
-          </label>
+          <div className="field-pair">
+            <label>
+              <span>UCX weekly amount</span>
+              <input
+                type="number"
+                min={0}
+                max={UCX_WEEKLY_MAX}
+                step={5}
+                value={settings.ucxWeeklyBenefit}
+                onChange={(event) => onSettingChange("ucxWeeklyBenefit", Number(event.target.value))}
+              />
+            </label>
+            <label>
+              <span>Essential expenses/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.essentialExpenseTarget}
+                onChange={(event) =>
+                  onSettingChange("essentialExpenseTarget", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Normal lifestyle/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.normalLifestyleTarget}
+                onChange={(event) =>
+                  onSettingChange("normalLifestyleTarget", Number(event.target.value))
+                }
+              />
+            </label>
+            <label>
+              <span>Ideal / savings target</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.idealSavingsTarget}
+                onChange={(event) =>
+                  onSettingChange("idealSavingsTarget", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Dec. 1 paycheck</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.decemberFirstPaycheck}
+                onChange={(event) =>
+                  onSettingChange("decemberFirstPaycheck", Number(event.target.value))
+                }
+              />
+            </label>
+            <label>
+              <span>Final military pay</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={Math.round(settings.finalMilitaryPay)}
+                onChange={(event) => onSettingChange("finalMilitaryPay", Number(event.target.value))}
+              />
+            </label>
+          </div>
           <SelectControl
             label="Final pay timing"
             value={settings.finalMilitaryPayMonth}

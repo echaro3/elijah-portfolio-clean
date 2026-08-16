@@ -503,10 +503,89 @@ legend svg,
   margin-bottom: 16px;
 }
 
+.control-board.is-collapsed .section-heading {
+  margin-bottom: 10px;
+}
+
 .section-heading h2 {
   color: var(--ink-strong);
   font-size: 1.62rem;
   line-height: 1.1;
+}
+
+.section-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  border: 1px solid rgba(76, 239, 255, 0.32);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(24, 62, 86, 0.8), rgba(7, 17, 30, 0.9));
+  color: var(--ink-strong);
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 850;
+  overflow: hidden;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasized);
+}
+
+.section-toggle:hover,
+.section-toggle:focus-visible {
+  border-color: rgba(76, 239, 255, 0.72);
+  box-shadow: var(--glow-soft);
+  transform: translateY(-1px);
+}
+
+.section-toggle svg {
+  width: 16px;
+  height: 16px;
+  color: var(--teal);
+  transition: transform var(--motion-fast) var(--ease-emphasized);
+}
+
+.control-board.is-expanded .section-toggle svg {
+  transform: rotate(180deg);
+}
+
+.control-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+  border-top: 1px solid rgba(111, 180, 216, 0.16);
+  border-bottom: 1px solid rgba(111, 180, 216, 0.12);
+  padding: 10px 0;
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.control-board.is-collapsed .control-summary-strip {
+  margin-bottom: 0;
+}
+
+.control-summary-strip span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.control-summary-strip strong {
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .model-stamp {
@@ -602,6 +681,10 @@ legend svg,
   min-width: 0;
 }
 
+.control-grid[hidden] {
+  display: none;
+}
+
 fieldset {
   display: grid;
   align-content: start;
@@ -625,6 +708,44 @@ fieldset:focus-within {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 0 26px rgba(76, 239, 255, 0.08);
+}
+
+.compact-fieldset {
+  gap: 10px;
+  padding: 13px;
+}
+
+.field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  min-width: 0;
+}
+
+.compact-fieldset label,
+.compact-fieldset .select-field {
+  gap: 5px;
+}
+
+.compact-fieldset input[type="number"],
+.compact-fieldset .themed-select-trigger {
+  min-height: 38px;
+  padding-right: 9px;
+  padding-left: 9px;
+}
+
+.compact-fieldset .segmented-control button {
+  min-height: 38px;
+}
+
+.compact-fieldset .inline-result {
+  padding-top: 9px;
+}
+
+.compact-fieldset .field-note,
+.compact-fieldset .inline-result small {
+  font-size: 0.78rem;
+  line-height: 1.36;
 }
 
 legend {
