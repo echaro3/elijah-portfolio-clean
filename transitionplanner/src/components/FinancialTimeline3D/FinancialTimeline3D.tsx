@@ -40,6 +40,8 @@ export default function FinancialTimeline3D({
   const [threshold, setThreshold] = React.useState<Timeline3DThreshold>("essential");
   const [activeStream, setActiveStream] = React.useState<IncomeKey | null>(null);
   const [selectedMonth, setSelectedMonth] = React.useState<MonthId | null>(null);
+  const [requiresTouchActivation, setRequiresTouchActivation] = React.useState(false);
+  const [touchControlsActive, setTouchControlsActive] = React.useState(false);
 
   const targets = React.useMemo(() => getExpenseTargets(settings), [settings]);
   const thresholdValue = targets[threshold];
@@ -49,6 +51,25 @@ export default function FinancialTimeline3D({
     series.find((month) => month.id === hoveredMonth) ??
     series.find((month) => month.status === "red") ??
     series[0];
+  const controlsEnabled = !requiresTouchActivation || touchControlsActive;
+  const shellClassName = [
+    "timeline-3d-shell",
+    requiresTouchActivation ? "requires-touch-activation" : "",
+    touchControlsActive ? "is-touch-active" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  React.useEffect(() => {
+    const query = window.matchMedia("(pointer: coarse)");
+    const updateTouchRequirement = () => {
+      setRequiresTouchActivation(query.matches || navigator.maxTouchPoints > 0);
+    };
+
+    updateTouchRequirement();
+    query.addEventListener("change", updateTouchRequirement);
+    return () => query.removeEventListener("change", updateTouchRequirement);
+  }, []);
 
   React.useEffect(() => {
     if (!canvasRef.current || !stageRef.current) {
@@ -81,17 +102,28 @@ export default function FinancialTimeline3D({
   }, [onMonthFocus]);
 
   React.useEffect(() => {
-    sceneRef.current?.update({
-      series,
-      thresholdLabel: getThresholdLabel(threshold),
-      thresholdValue,
-      activeStream,
-      selectedMonth,
-      hoveredMonth,
-      events,
-      reducedMotion,
-    });
-  }, [activeStream, events, hoveredMonth, reducedMotion, selectedMonth, series, threshold, thresholdValue]);
+    sceneRef.current?.setFinancialData(series);
+  }, [series]);
+
+  React.useEffect(() => {
+    sceneRef.current?.setThreshold(getThresholdLabel(threshold), thresholdValue);
+  }, [threshold, thresholdValue]);
+
+  React.useEffect(() => {
+    sceneRef.current?.setEvents(events);
+  }, [events]);
+
+  React.useEffect(() => {
+    sceneRef.current?.setInteractionState({ activeStream, selectedMonth, hoveredMonth });
+  }, [activeStream, hoveredMonth, selectedMonth]);
+
+  React.useEffect(() => {
+    sceneRef.current?.setReducedMotion(reducedMotion);
+  }, [reducedMotion]);
+
+  React.useEffect(() => {
+    sceneRef.current?.setControlsEnabled(controlsEnabled);
+  }, [controlsEnabled]);
 
   const chooseMonth = (monthId: MonthId) => {
     setSelectedMonth(monthId);
@@ -111,7 +143,7 @@ export default function FinancialTimeline3D({
   }
 
   return (
-    <div className="timeline-3d-shell">
+    <div className={shellClassName}>
       <div className="timeline-3d-toolbar" aria-label="Holographic analysis controls">
         <div>
           <span>Reference plane</span>
@@ -147,18 +179,46 @@ export default function FinancialTimeline3D({
         </div>
       </div>
 
-      <div className="timeline-3d-stage" ref={stageRef}>
-        <canvas
-          ref={canvasRef}
-          className="timeline-3d-canvas"
-          role="img"
-          aria-label="Interactive 3D financial timeline from August 2026 through July 2027"
-        />
-        {rendererStatus === "pending" ? (
-          <div className="timeline-3d-canvas-status" role="status">
-            Projecting model...
-          </div>
-        ) : null}
+      <div className="timeline-3d-legend" aria-label="3D financial timeline legend">
+        <span>
+          <i className="is-gross" aria-hidden="true" />
+          Tower = gross resources
+        </span>
+        <span>
+          <i className="is-net" aria-hidden="true" />
+          Net line = after tuition
+        </span>
+        <span>
+          <i className="is-plane" aria-hidden="true" />
+          Plane = selected target
+        </span>
+      </div>
+
+      <div className="timeline-3d-stage-wrap">
+        <div className="timeline-3d-stage" ref={stageRef}>
+          <canvas
+            ref={canvasRef}
+            className="timeline-3d-canvas"
+            role="img"
+            aria-label="Interactive 3D financial timeline from August 2026 through July 2027"
+          />
+          {rendererStatus === "pending" ? (
+            <div className="timeline-3d-canvas-status" role="status">
+              Projecting model...
+            </div>
+          ) : null}
+          {requiresTouchActivation ? (
+            <div className="timeline-3d-touch-gate">
+              <button
+                type="button"
+                onClick={() => setTouchControlsActive((current) => !current)}
+                aria-pressed={touchControlsActive}
+              >
+                {touchControlsActive ? "Release controls" : "Enable 3D controls"}
+              </button>
+            </div>
+          ) : null}
+        </div>
         {activeMonth ? (
           <MonthAnalysisPanel
             month={activeMonth}
@@ -340,7 +400,7 @@ function getThresholdLabel(threshold: Timeline3DThreshold) {
   }
 
   if (threshold === "ideal") {
-    return "Comfort";
+    return "Ideal";
   }
 
   return "Essential";

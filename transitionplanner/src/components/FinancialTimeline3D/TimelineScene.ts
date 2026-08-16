@@ -8,8 +8,12 @@ const BAR_WIDTH = 0.56;
 const BAR_DEPTH = 0.68;
 const MONTH_STEP = 1.18;
 const MIN_HEIGHT = 0.015;
+const NET_MARKER_HEIGHT = 0.032;
 const SCENE_DEPTH = 3.2;
 const TRANSITION_SECONDS = 0.68;
+const TRANSITION_SETTLE_FRAMES = 54;
+const INTERACTION_SETTLE_FRAMES = 18;
+const RESIZE_SETTLE_FRAMES = 8;
 
 type SegmentHandle = {
   mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhysicalMaterial>;
@@ -33,6 +37,17 @@ type TuitionHandle = {
   targetOpacity: number;
 };
 
+type NetMarkerHandle = {
+  mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
+  currentY: number;
+  targetY: number;
+  currentOpacity: number;
+  targetOpacity: number;
+  currentScaleX: number;
+  targetScaleX: number;
+  targetColor: THREE.Color;
+};
+
 type MonthHandle = {
   id: MonthId;
   x: number;
@@ -42,6 +57,8 @@ type MonthHandle = {
   label: THREE.Sprite;
   segments: Map<IncomeKey, SegmentHandle>;
   tuition: TuitionHandle;
+  depletion: TuitionHandle;
+  netMarker: NetMarkerHandle;
 };
 
 type CameraMove = {
@@ -62,6 +79,12 @@ export type TimelineSceneUpdate = {
   hoveredMonth: MonthId | null;
   events: Timeline3DEvent[];
   reducedMotion: boolean;
+};
+
+export type TimelineSceneInteractionUpdate = {
+  activeStream: IncomeKey | null;
+  selectedMonth: MonthId | null;
+  hoveredMonth: MonthId | null;
 };
 
 export type FinancialTimelineSceneOptions = {
@@ -86,10 +109,15 @@ export class FinancialTimelineScene {
   private readonly eventGroup = new THREE.Group();
   private readonly floorGroup = new THREE.Group();
   private readonly months = new Map<MonthId, MonthHandle>();
+  private readonly handleControlsStart = () => this.requestRender(TRANSITION_SETTLE_FRAMES);
+  private readonly handleControlsChange = () => this.requestRender(INTERACTION_SETTLE_FRAMES);
+  private readonly handleControlsEnd = () => this.requestRender(INTERACTION_SETTLE_FRAMES);
   private readonly onHoverMonth: (monthId: MonthId | null) => void;
   private readonly onSelectMonth: (monthId: MonthId) => void;
   private resizeObserver: ResizeObserver | null = null;
-  private frameId = 0;
+  private intersectionObserver: IntersectionObserver | null = null;
+  private frameId: number | null = null;
+  private framesRemaining = 0;
   private hoveredMonth: MonthId | null = null;
   private selectedMonth: MonthId | null = null;
   private activeStream: IncomeKey | null = null;
@@ -102,6 +130,12 @@ export class FinancialTimelineScene {
   private floorLine: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private floorLabel: THREE.Sprite;
   private cameraMove: CameraMove | null = null;
+  private controlsEnabled = true;
+  private isSceneVisible = true;
+  private isPageVisible = document.visibilityState !== "hidden";
+  private gridSignature = "";
+  private floorSignature = "";
+  private eventSignature = "";
 
   constructor({ canvas, container, onHoverMonth, onSelectMonth }: FinancialTimelineSceneOptions) {
     this.canvas = canvas;
@@ -113,8 +147,8 @@ export class FinancialTimelineScene {
       canvas,
       alpha: true,
       antialias: true,
-      powerPreference: "high-performance",
-      preserveDrawingBuffer: true,
+      powerPreference: "default",
+      preserveDrawingBuffer: false,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -129,6 +163,9 @@ export class FinancialTimelineScene {
     this.controls.enablePan = true;
     this.controls.screenSpacePanning = false;
     this.controls.target.set(0, 2.4, 0);
+    this.controls.addEventListener("start", this.handleControlsStart);
+    this.controls.addEventListener("change", this.handleControlsChange);
+    this.controls.addEventListener("end", this.handleControlsEnd);
 
     this.floorPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
@@ -167,31 +204,126 @@ export class FinancialTimelineScene {
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.addEventListener("click", this.handleClick);
 
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver = new ResizeObserver(() => {
+      this.resize();
+      this.requestRender(RESIZE_SETTLE_FRAMES);
+    });
     this.resizeObserver.observe(this.container);
 
-    this.animate();
+    if ("IntersectionObserver" in window) {
+      this.intersectionObserver = new IntersectionObserver(
+        ([entry]) => {
+          this.isSceneVisible = entry?.isIntersecting ?? true;
+          if (this.isSceneVisible) {
+            this.requestRender(TRANSITION_SETTLE_FRAMES);
+          }
+        },
+        { threshold: 0.08 },
+      );
+      this.intersectionObserver.observe(this.container);
+    }
+
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    this.requestRender(TRANSITION_SETTLE_FRAMES);
   }
 
   update(update: TimelineSceneUpdate) {
-    this.series = update.series;
-    this.thresholdValue = update.thresholdValue;
-    this.thresholdLabel = update.thresholdLabel;
-    this.activeStream = update.activeStream;
-    this.selectedMonth = update.selectedMonth;
-    this.hoveredMonth = update.hoveredMonth;
-    this.reducedMotion = update.reducedMotion;
+    this.setReducedMotion(update.reducedMotion);
+    this.setFinancialData(update.series);
+    this.setThreshold(update.thresholdLabel, update.thresholdValue);
+    this.setEvents(update.events);
+    this.setInteractionState({
+      activeStream: update.activeStream,
+      selectedMonth: update.selectedMonth,
+      hoveredMonth: update.hoveredMonth,
+    });
+  }
+
+  setFinancialData(series: MonthModel[]) {
+    this.series = series;
     this.maxValue = Math.max(
       6500,
       this.thresholdValue,
-      ...update.series.map((month) => Math.max(month.total, month.tuition)),
+      ...series.map((month) => Math.max(month.total, month.tuition)),
     ) * 1.12;
 
-    this.ensureMonths(update.series);
+    this.ensureMonths(series);
     this.updateGrid();
     this.updateFloor();
     this.updateMonthTargets();
-    this.updateEvents(update.events);
+    this.requestRender(TRANSITION_SETTLE_FRAMES);
+  }
+
+  setThreshold(thresholdLabel: string, thresholdValue: number) {
+    if (this.thresholdLabel === thresholdLabel && this.thresholdValue === thresholdValue) {
+      return;
+    }
+
+    this.thresholdLabel = thresholdLabel;
+    this.thresholdValue = thresholdValue;
+    this.maxValue = Math.max(
+      6500,
+      this.thresholdValue,
+      ...this.series.map((month) => Math.max(month.total, month.tuition)),
+    ) * 1.12;
+    this.updateGrid();
+    this.updateFloor();
+    this.updateMonthTargets();
+    this.requestRender(TRANSITION_SETTLE_FRAMES);
+  }
+
+  setEvents(events: Timeline3DEvent[]) {
+    const nextSignature = events
+      .map((event) => `${event.id}:${event.monthId}:${event.label}:${event.kind}`)
+      .join("|");
+    if (nextSignature === this.eventSignature) {
+      return;
+    }
+
+    this.eventSignature = nextSignature;
+    this.updateEvents(events);
+    this.requestRender(TRANSITION_SETTLE_FRAMES);
+  }
+
+  setInteractionState(update: TimelineSceneInteractionUpdate) {
+    if (
+      this.activeStream === update.activeStream &&
+      this.selectedMonth === update.selectedMonth &&
+      this.hoveredMonth === update.hoveredMonth
+    ) {
+      return;
+    }
+
+    this.activeStream = update.activeStream;
+    this.selectedMonth = update.selectedMonth;
+    this.hoveredMonth = update.hoveredMonth;
+    this.updateMonthTargets();
+    this.requestRender(INTERACTION_SETTLE_FRAMES);
+  }
+
+  setReducedMotion(reducedMotion: boolean) {
+    if (this.reducedMotion === reducedMotion) {
+      return;
+    }
+
+    this.reducedMotion = reducedMotion;
+    this.requestRender(TRANSITION_SETTLE_FRAMES);
+  }
+
+  setControlsEnabled(enabled: boolean) {
+    if (this.controlsEnabled === enabled) {
+      return;
+    }
+
+    this.controlsEnabled = enabled;
+    this.controls.enabled = enabled;
+    this.canvas.style.cursor = enabled ? "grab" : "default";
+    if (!enabled && this.hoveredMonth !== null) {
+      this.hoveredMonth = null;
+      this.onHoverMonth(null);
+      this.updateMonthTargets();
+    }
+    this.requestRender(INTERACTION_SETTLE_FRAMES);
   }
 
   setCameraPreset(preset: CameraPreset, immediate = false) {
@@ -222,11 +354,19 @@ export class FinancialTimelineScene {
   }
 
   dispose() {
-    cancelAnimationFrame(this.frameId);
+    if (this.frameId !== null) {
+      cancelAnimationFrame(this.frameId);
+      this.frameId = null;
+    }
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.removeEventListener("click", this.handleClick);
     this.resizeObserver?.disconnect();
+    this.intersectionObserver?.disconnect();
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    this.controls.removeEventListener("start", this.handleControlsStart);
+    this.controls.removeEventListener("change", this.handleControlsChange);
+    this.controls.removeEventListener("end", this.handleControlsEnd);
     this.controls.dispose();
     disposeObject(this.scene);
     this.renderer.dispose();
@@ -350,9 +490,67 @@ export class FinancialTimelineScene {
         targetOpacity: 0.08,
       };
 
-      root.add(base, hitbox, label, tuitionMesh);
+      const depletionMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0xff6572,
+        emissive: 0xff6572,
+        emissiveIntensity: 0.35,
+        transparent: true,
+        opacity: 0.03,
+        roughness: 0.18,
+        metalness: 0.04,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const depletionMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), depletionMaterial);
+      depletionMesh.renderOrder = 22;
+      depletionMesh.scale.set(BAR_WIDTH * 1.08, MIN_HEIGHT, BAR_DEPTH * 1.12);
+      depletionMesh.position.set(0, MIN_HEIGHT / 2, 0.02);
+      const depletion: TuitionHandle = {
+        mesh: depletionMesh,
+        currentHeight: MIN_HEIGHT,
+        targetHeight: MIN_HEIGHT,
+        currentY: depletionMesh.position.y,
+        targetY: depletionMesh.position.y,
+        currentOpacity: 0.03,
+        targetOpacity: 0.03,
+      };
+
+      const netMarkerMaterial = new THREE.MeshBasicMaterial({
+        color: 0x4cefff,
+        transparent: true,
+        opacity: 0.1,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const netMarkerMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), netMarkerMaterial);
+      netMarkerMesh.renderOrder = 30;
+      netMarkerMesh.scale.set(BAR_WIDTH * 1.28, NET_MARKER_HEIGHT, BAR_DEPTH * 1.18);
+      netMarkerMesh.position.set(0, NET_MARKER_HEIGHT / 2, 0.01);
+      const netMarker: NetMarkerHandle = {
+        mesh: netMarkerMesh,
+        currentY: netMarkerMesh.position.y,
+        targetY: netMarkerMesh.position.y,
+        currentOpacity: 0.1,
+        targetOpacity: 0.1,
+        currentScaleX: BAR_WIDTH * 1.28,
+        targetScaleX: BAR_WIDTH * 1.28,
+        targetColor: new THREE.Color(0x4cefff),
+      };
+
+      root.add(base, hitbox, label, tuitionMesh, depletionMesh, netMarkerMesh);
       this.monthGroup.add(root);
-      this.months.set(month.id, { id: month.id, x, root, base, hitbox, label, segments, tuition });
+      this.months.set(month.id, {
+        id: month.id,
+        x,
+        root,
+        base,
+        hitbox,
+        label,
+        segments,
+        tuition,
+        depletion,
+        netMarker,
+      });
     });
   }
 
@@ -405,12 +603,37 @@ export class FinancialTimelineScene {
       handle.tuition.targetHeight = tuitionHeight;
       handle.tuition.targetY = -tuitionHeight / 2;
       handle.tuition.targetOpacity = month.tuition > 0 ? (isFocused ? 0.72 : 0.48) : 0.03;
-      handle.hitbox.scale.y = Math.max(1, (stackY + 0.8) / 9);
-      handle.hitbox.position.y = Math.max(0.8, stackY / 2);
+
+      const grossY = scaleValue(month.total);
+      const netY = scaleSignedValue(month.effective);
+      const visibleNetY = Number.isFinite(netY) ? netY : 0;
+      const depletionBottom = Math.min(grossY, Math.max(0, visibleNetY));
+      const depletionTop = Math.max(grossY, Math.max(0, visibleNetY));
+      const depletionHeight = Math.max(MIN_HEIGHT, depletionTop - depletionBottom);
+      handle.depletion.targetHeight = depletionHeight;
+      handle.depletion.targetY = depletionBottom + depletionHeight / 2;
+      handle.depletion.targetOpacity = month.tuition > 0 && month.total > 0 ? (isFocused ? 0.42 : 0.24) : 0.025;
+
+      handle.netMarker.targetY = visibleNetY;
+      handle.netMarker.targetScaleX = isFocused ? BAR_WIDTH * 1.58 : BAR_WIDTH * 1.28;
+      handle.netMarker.targetOpacity = Math.abs(month.effective) > 1 || month.tuition > 0 ? (isFocused ? 0.96 : 0.76) : 0.18;
+      handle.netMarker.targetColor.copy(getNetMarkerColor(month.effective, this.thresholdValue));
+
+      const hitboxTop = Math.max(stackY, grossY, scaleValue(this.thresholdValue), 0.9);
+      const hitboxBottom = Math.min(visibleNetY, -tuitionHeight, -0.12);
+      handle.hitbox.scale.y = Math.max(1, (hitboxTop - hitboxBottom + 0.8) / 9);
+      handle.hitbox.position.y = (hitboxTop + hitboxBottom) / 2;
     });
   }
 
   private updateGrid() {
+    const markerStep = chooseValueStep(this.maxValue);
+    const signature = `${this.series.length}:${Math.round(this.maxValue)}:${markerStep}`;
+    if (signature === this.gridSignature) {
+      return;
+    }
+    this.gridSignature = signature;
+
     disposeObject(this.gridGroup);
     this.gridGroup.clear();
 
@@ -429,7 +652,6 @@ export class FinancialTimelineScene {
       opacity: 0.22,
     });
     const points: number[] = [];
-    const markerStep = chooseValueStep(this.maxValue);
     for (let value = 0; value <= this.maxValue + markerStep; value += markerStep) {
       const y = scaleValue(value);
       points.push(-width / 2, y, -1.72, width / 2, y, -1.72);
@@ -451,6 +673,12 @@ export class FinancialTimelineScene {
   }
 
   private updateFloor() {
+    const signature = `${this.series.length}:${Math.round(this.thresholdValue)}:${this.thresholdLabel}`;
+    if (signature === this.floorSignature) {
+      return;
+    }
+    this.floorSignature = signature;
+
     const width = getSceneWidth(Math.max(1, this.series.length)) + 1.2;
     const floorY = scaleValue(this.thresholdValue);
     this.floorPlane.position.y = floorY;
@@ -527,48 +755,101 @@ export class FinancialTimelineScene {
     });
   }
 
-  private animate = () => {
-    const delta = this.clock.getDelta();
-    this.frameId = requestAnimationFrame(this.animate);
-    this.updateCameraMove();
-    this.controls.update();
+  private requestRender(frames = 1) {
+    this.framesRemaining = Math.max(this.framesRemaining, frames);
+
+    if (this.frameId !== null || !this.isSceneVisible || !this.isPageVisible) {
+      return;
+    }
+
+    this.clock.getDelta();
+    this.frameId = requestAnimationFrame(this.renderFrame);
+  }
+
+  private renderFrame = () => {
+    this.frameId = null;
+
+    if (!this.isSceneVisible || !this.isPageVisible) {
+      return;
+    }
+
+    const delta = Math.min(this.clock.getDelta(), 0.08);
+    const cameraIsMoving = this.updateCameraMove();
+    const controlsChanged = this.controls.update();
     this.clampControls();
-    this.animateSegments(delta);
+    const geometryIsAnimating = this.animateSegments(delta);
     this.renderer.render(this.scene, this.camera);
+
+    this.framesRemaining = Math.max(0, this.framesRemaining - 1);
+    if (cameraIsMoving || controlsChanged || geometryIsAnimating || this.framesRemaining > 0) {
+      this.frameId = requestAnimationFrame(this.renderFrame);
+    }
   };
 
   private animateSegments(delta: number) {
     const alpha = this.reducedMotion ? 1 : 1 - Math.exp(-(delta / TRANSITION_SECONDS) * 4.5);
+    let isAnimating = false;
     this.months.forEach((month) => {
       month.segments.forEach((segment) => {
-        segment.currentHeight = THREE.MathUtils.lerp(segment.currentHeight, segment.targetHeight, alpha);
-        segment.currentY = THREE.MathUtils.lerp(segment.currentY, segment.targetY, alpha);
-        segment.currentOpacity = THREE.MathUtils.lerp(segment.currentOpacity, segment.targetOpacity, alpha);
-        segment.mesh.scale.y = Math.max(MIN_HEIGHT, segment.currentHeight);
-        segment.mesh.position.y = segment.currentY;
-        segment.mesh.material.opacity = segment.currentOpacity;
+        isAnimating = this.animateBox(segment, alpha) || isAnimating;
       });
 
-      month.tuition.currentHeight = THREE.MathUtils.lerp(
-        month.tuition.currentHeight,
-        month.tuition.targetHeight,
-        alpha,
-      );
-      month.tuition.currentY = THREE.MathUtils.lerp(month.tuition.currentY, month.tuition.targetY, alpha);
-      month.tuition.currentOpacity = THREE.MathUtils.lerp(
-        month.tuition.currentOpacity,
-        month.tuition.targetOpacity,
-        alpha,
-      );
-      month.tuition.mesh.scale.y = Math.max(MIN_HEIGHT, month.tuition.currentHeight);
-      month.tuition.mesh.position.y = month.tuition.currentY;
-      month.tuition.mesh.material.opacity = month.tuition.currentOpacity;
+      isAnimating = this.animateBox(month.tuition, alpha) || isAnimating;
+      isAnimating = this.animateBox(month.depletion, alpha) || isAnimating;
+      isAnimating = this.animateNetMarker(month.netMarker, alpha) || isAnimating;
     });
+
+    return isAnimating;
+  }
+
+  private animateBox(
+    handle: {
+      mesh: THREE.Mesh<THREE.BoxGeometry, THREE.Material>;
+      currentHeight: number;
+      targetHeight: number;
+      currentY: number;
+      targetY: number;
+      currentOpacity: number;
+      targetOpacity: number;
+    },
+    alpha: number,
+  ) {
+    const wasAnimating =
+      Math.abs(handle.currentHeight - handle.targetHeight) > 0.001 ||
+      Math.abs(handle.currentY - handle.targetY) > 0.001 ||
+      Math.abs(handle.currentOpacity - handle.targetOpacity) > 0.003;
+
+    handle.currentHeight = THREE.MathUtils.lerp(handle.currentHeight, handle.targetHeight, alpha);
+    handle.currentY = THREE.MathUtils.lerp(handle.currentY, handle.targetY, alpha);
+    handle.currentOpacity = THREE.MathUtils.lerp(handle.currentOpacity, handle.targetOpacity, alpha);
+    handle.mesh.scale.y = Math.max(MIN_HEIGHT, handle.currentHeight);
+    handle.mesh.position.y = handle.currentY;
+    handle.mesh.material.opacity = handle.currentOpacity;
+
+    return wasAnimating;
+  }
+
+  private animateNetMarker(marker: NetMarkerHandle, alpha: number) {
+    const wasAnimating =
+      Math.abs(marker.currentY - marker.targetY) > 0.001 ||
+      Math.abs(marker.currentOpacity - marker.targetOpacity) > 0.003 ||
+      Math.abs(marker.currentScaleX - marker.targetScaleX) > 0.001 ||
+      colorDelta(marker.mesh.material.color, marker.targetColor) > 0.003;
+
+    marker.currentY = THREE.MathUtils.lerp(marker.currentY, marker.targetY, alpha);
+    marker.currentOpacity = THREE.MathUtils.lerp(marker.currentOpacity, marker.targetOpacity, alpha);
+    marker.currentScaleX = THREE.MathUtils.lerp(marker.currentScaleX, marker.targetScaleX, alpha);
+    marker.mesh.position.y = marker.currentY;
+    marker.mesh.scale.x = marker.currentScaleX;
+    marker.mesh.material.opacity = marker.currentOpacity;
+    marker.mesh.material.color.lerp(marker.targetColor, alpha);
+
+    return wasAnimating;
   }
 
   private updateCameraMove() {
     if (!this.cameraMove) {
-      return;
+      return false;
     }
 
     const progress = Math.min(1, (performance.now() - this.cameraMove.start) / this.cameraMove.duration);
@@ -579,6 +860,8 @@ export class FinancialTimelineScene {
     if (progress >= 1) {
       this.cameraMove = null;
     }
+
+    return true;
   }
 
   private moveCamera(position: THREE.Vector3, target: THREE.Vector3, immediate: boolean) {
@@ -588,6 +871,7 @@ export class FinancialTimelineScene {
       this.camera.lookAt(target);
       this.controls.update();
       this.cameraMove = null;
+      this.requestRender(RESIZE_SETTLE_FRAMES);
       return;
     }
 
@@ -599,6 +883,7 @@ export class FinancialTimelineScene {
       fromTarget: this.controls.target.clone(),
       toTarget: target,
     };
+    this.requestRender(TRANSITION_SETTLE_FRAMES);
   }
 
   private clampControls() {
@@ -618,6 +903,10 @@ export class FinancialTimelineScene {
   }
 
   private handlePointerMove = (event: PointerEvent) => {
+    if (!this.controlsEnabled) {
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -630,18 +919,34 @@ export class FinancialTimelineScene {
       this.hoveredMonth = nextMonth;
       this.onHoverMonth(nextMonth);
       this.canvas.style.cursor = nextMonth ? "pointer" : "grab";
+      this.requestRender(INTERACTION_SETTLE_FRAMES);
     }
   };
 
   private handlePointerLeave = () => {
+    if (!this.controlsEnabled && this.hoveredMonth === null) {
+      return;
+    }
+
     this.hoveredMonth = null;
-    this.canvas.style.cursor = "grab";
+    this.canvas.style.cursor = this.controlsEnabled ? "grab" : "default";
     this.onHoverMonth(null);
+    this.requestRender(INTERACTION_SETTLE_FRAMES);
   };
 
   private handleClick = () => {
-    if (this.hoveredMonth) {
+    if (this.controlsEnabled && this.hoveredMonth) {
       this.onSelectMonth(this.hoveredMonth);
+    }
+  };
+
+  private handleVisibilityChange = () => {
+    this.isPageVisible = document.visibilityState !== "hidden";
+    if (this.isPageVisible) {
+      this.requestRender(TRANSITION_SETTLE_FRAMES);
+    } else if (this.frameId !== null) {
+      cancelAnimationFrame(this.frameId);
+      this.frameId = null;
     }
   };
 }
@@ -656,6 +961,22 @@ function getSceneWidth(total: number) {
 
 function scaleValue(value: number) {
   return Math.max(0, value) / VALUE_UNIT;
+}
+
+function scaleSignedValue(value: number) {
+  return THREE.MathUtils.clamp(value / VALUE_UNIT, -2.6, 16);
+}
+
+function getNetMarkerColor(effectiveValue: number, thresholdValue: number) {
+  if (effectiveValue < 0) {
+    return new THREE.Color(0xff6572);
+  }
+
+  if (effectiveValue < thresholdValue) {
+    return new THREE.Color(0xffd782);
+  }
+
+  return new THREE.Color(0x4cefff);
 }
 
 function getStatusColor(status: string) {
@@ -761,6 +1082,14 @@ function updateTextSprite(
 
 function colorToCss(color: number) {
   return `#${color.toString(16).padStart(6, "0")}`;
+}
+
+function colorDelta(current: THREE.Color, target: THREE.Color) {
+  return Math.max(
+    Math.abs(current.r - target.r),
+    Math.abs(current.g - target.g),
+    Math.abs(current.b - target.b),
+  );
 }
 
 function disposeObject(object: THREE.Object3D) {
