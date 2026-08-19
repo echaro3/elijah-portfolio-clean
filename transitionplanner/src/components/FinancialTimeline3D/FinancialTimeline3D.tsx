@@ -333,7 +333,8 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
   const events: Timeline3DEvent[] = [
     { id: "terminal-leave", monthId: "2026-10", label: "Leave", kind: "transition" },
     { id: "separation", monthId: "2026-12", label: "DOS", kind: "transition" },
-    { id: "wgu-start", monthId: "2027-02", label: "WGU", kind: "school" },
+    { id: "wgu-current", monthId: "2026-12", label: "Enrolled", kind: "school" },
+    { id: "wgu-new-term", monthId: "2027-02", label: "New term", kind: "school" },
   ];
 
   const firstWork = series.find((month) => month.streams.civilian > 0);
@@ -370,7 +371,13 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
 
   const firstMgib = series.find((month) => month.streams.mgib > 0);
   if (firstMgib) {
-    events.push({ id: "mgib", monthId: firstMgib.id, label: "MGIB", kind: "school" });
+    const firstMgibIsProrated = firstMgib.streams.mgib < Math.max(0, settings.mgibMonthlyRate);
+    events.push({
+      id: "mgib",
+      monthId: firstMgib.id,
+      label: firstMgibIsProrated ? "MGIB prorate" : "MGIB",
+      kind: "school",
+    });
   }
 
   const firstDanger = series.find((month) => month.status === "red");

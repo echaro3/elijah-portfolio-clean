@@ -12,7 +12,6 @@ import {
   FileCheck2,
   GraduationCap,
   Landmark,
-  Layers3,
   PiggyBank,
   ShieldCheck,
   SlidersHorizontal,
@@ -139,6 +138,8 @@ const DEFAULT_IDEAL_SAVINGS_TARGET = 5000;
 const WGU_TERM_TUITION = 4030;
 const WGU_TUITION_MONTHLY = WGU_TERM_TUITION / 6;
 const DEFAULT_MGIB_FULL_TIME = 2518;
+const MGIB_DECEMBER_START_DAY = 8;
+const MGIB_DECEMBER_DAYS_PAYABLE = 31 - MGIB_DECEMBER_START_DAY + 1;
 const DECEMBER_FIRST_PAYCHECK_DEFAULT = ACTIVE_DUTY_MONTHLY / 2;
 const FINAL_MILITARY_PAY_DEFAULT = (ACTIVE_DUTY_MONTHLY / 31) * 7;
 const UCX_WEEKLY_MAX = 605;
@@ -274,7 +275,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     id: "schoolFirst",
     label: "Scenario A - School-first",
     shortLabel: "School-first",
-    description: "No civilian job after separation; WGU begins February at the full-time planning load.",
+    description: "No civilian job after separation; the Feb. 1 WGU term carries the full-time planning load.",
     recommendation: "Only comfortable if UCX is approved or you carry a serious reserve into January.",
     stress: "High until VA and MGIB are flowing",
     schoolTime: "Best",
@@ -293,7 +294,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     id: "bridge",
     label: "Scenario B - Temporary bridge",
     shortLabel: "Contract bridge",
-    description: "Temporary technical contract starts in late October and ends before WGU becomes the main focus.",
+    description: "Temporary technical contract starts in late October and ends before the Feb. 1 WGU term becomes the main focus.",
     recommendation: "Best balance: use the Oct-Jan overlap to build reserve, clean up urgent debt, and keep school optionality.",
     stress: "Medium, then lower if reserve is saved",
     schoolTime: "Strong after contract ends",
@@ -474,7 +475,7 @@ const ACTION_PLAN = [
     month: "November 2026",
     title: "Prepare the benefit handoff",
     actions: [
-      "Confirm WGU term, 18+ CU plan, MGIB certification path, and any required VA enrollment steps.",
+      "Confirm current WGU enrollment, the Feb. 1 term, 18+ CU plan, MGIB certification path, and any required VA enrollment steps.",
       "Prepare FAFSA professional-judgment documentation: orders, projected income, final LES plan, debt context, and separation docs.",
       "Make a January cash plan that works without VA backpay.",
       "Decide whether the contract should end in January, February, or continue part time.",
@@ -485,6 +486,7 @@ const ACTION_PLAN = [
     title: "Cross the DOS line cleanly",
     actions: [
       "After December 7, secure DD-214 copies, final LES records, and any separation/pay documents.",
+      "Submit or confirm the Dec. 8-31 enrollment proof path for the possible January MGIB prorated payment.",
       "If no work or a contract ends, contact TWC about UCX timing, availability rules, and WGU compatibility.",
       "Do not budget VA backpay before it is deposited.",
       "Update the planner with actual December military pay and final-pay timing.",
@@ -494,7 +496,8 @@ const ACTION_PLAN = [
     month: "January 2027",
     title: "Finish the February launch checklist",
     actions: [
-      "Confirm WGU registration at 18+ CUs and VA education certification before February 1.",
+      "Check whether the Jan. 1 MGIB deposit reflects the Dec. 8-31 prorated enrollment period.",
+      "Confirm the new Feb. 1 WGU term registration at 18+ CUs and VA education certification before February 1.",
       "Submit or finalize professional-judgment materials if WGU says your case is ready.",
       "If the contract ends naturally, collect end-of-contract documentation.",
       "Make a February bill calendar around MGIB, Pell disbursement timing, and any VA uncertainty.",
@@ -504,7 +507,7 @@ const ACTION_PLAN = [
     month: "February 2027",
     title: "Stabilize and reassess",
     actions: [
-      "Start the WGU term and verify benefit payments against actual deposits, not award promises.",
+      "Start the new WGU term and verify full MGIB payments against actual deposits, not award promises.",
       "If VA is not flowing, decide whether to add part-time technical work before reserves get thin.",
       "Re-run this model using the official 2026-27 MGIB rate if VA has published it by then.",
       "Use the first reliable month to choose school-first, part-time, or full-time work for March-July.",
@@ -1157,7 +1160,7 @@ function App() {
           icon={<ShieldCheck aria-hidden="true" />}
           label="Likely safest path"
           value="Temporary bridge"
-          detail="Contract income through January, WGU at 18+ CUs in February, VA delay planned as normal."
+          detail="Contract income through January, new WGU term at 18+ CUs in February, VA delay planned as normal."
         />
         <MetricCard
           icon={<AlertTriangle aria-hidden="true" />}
@@ -1228,11 +1231,12 @@ function App() {
       />
 
       <section className="dashboard-grid" aria-label="Income and risk visuals">
-        <IncomeLayerChart
+        <HolographicTimelineSection
           series={series}
           settings={settings}
           hoveredMonth={hoveredMonth}
           onMonthFocus={setHoveredMonth}
+          reducedMotion={prefersReducedMotion}
         />
         <MonthlyStressGrid
           series={series}
@@ -1241,14 +1245,6 @@ function App() {
           onMonthFocus={setHoveredMonth}
         />
       </section>
-
-      <HolographicTimelineSection
-        series={series}
-        settings={settings}
-        hoveredMonth={hoveredMonth}
-        onMonthFocus={setHoveredMonth}
-        reducedMotion={prefersReducedMotion}
-      />
 
       <MasterTimeline
         settings={settings}
@@ -1286,7 +1282,7 @@ function Header({ summary }: HeaderProps) {
           <strong>Dec. 7, 2026</strong>
         </div>
         <div>
-          <span>WGU start</span>
+          <span>New WGU term</span>
           <strong>Feb. 1, 2027</strong>
         </div>
         <div>
@@ -1336,6 +1332,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
   const pellTermAmount = getPellTermAmount(settings);
   const schoolIsFullTime = settings.schoolCUs >= 18;
   const mgibMonthly = getMgibMonthly(settings);
+  const mgibDecemberProrated = getDecemberMgibProrated(settings);
   const pellEnrollmentLabel =
     PELL_ENROLLMENT_OPTIONS.find((option) => option.value === settings.pellEnrollment)?.label ??
     "No Pell";
@@ -1492,6 +1489,14 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               )}
             </strong>
             <small>
+              {schoolIsFullTime ? (
+                <>
+                  Jan. 1 models a Dec. 8-31 prorated MGIB deposit of{" "}
+                  <AnimatedNumber value={mgibDecemberProrated} />; full MGIB deposits start Feb. 1.
+                </>
+              ) : (
+                "MGIB is held at zero until the model is set to 18+ CUs."
+              )}{" "}
               Pell is separate: <AnimatedNumber value={pellTermAmount} suffix="/term" />{" "}
               {settings.planningMode === "cashTiming"
                 ? "as a term-start cash event."
@@ -1503,8 +1508,9 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </small>
           </div>
           <p className="field-note">
-            MGIB defaults to the 2025-26 full-time placeholder; replace it when VA publishes the
-            Oct. 2026-Sep. 2027 rate.
+            MGIB defaults to the 2025-26 full-time placeholder. Cash timing assumes current
+            school participation creates a Jan. 1 prorated payment for Dec. 8-31, then full
+            monthly payments from the Feb. 1 term forward.
           </p>
         </fieldset>
 
@@ -1823,9 +1829,6 @@ function HolographicTimelineSection({
   reducedMotion,
 }: HolographicTimelineSectionProps) {
   const [mode, setMode] = React.useState<"standard" | "holographic">("standard");
-  const targets = getExpenseTargets(settings);
-  const dangerMonths = series.filter((month) => month.status === "red").length;
-  const peakMonth = series.reduce((highest, month) => (month.total > highest.total ? month : highest), series[0]);
 
   return (
     <section
@@ -1872,15 +1875,13 @@ function HolographicTimelineSection({
           />
         </React.Suspense>
       ) : (
-        <div className="hologram-standby" aria-label="Holographic timeline summary">
-          <span>
-            <Layers3 aria-hidden="true" />
-            {series.length} months
-          </span>
-          <span>Floor {formatMoney(targets.essential)}/mo</span>
-          <span>{dangerMonths} danger months</span>
-          <span>Peak {peakMonth.short} {formatMoney(peakMonth.total)}</span>
-        </div>
+        <IncomeLayerChart
+          series={series}
+          settings={settings}
+          hoveredMonth={hoveredMonth}
+          onMonthFocus={onMonthFocus}
+          embedded
+        />
       )}
     </section>
   );
@@ -1891,11 +1892,13 @@ function IncomeLayerChart({
   settings,
   hoveredMonth,
   onMonthFocus,
+  embedded = false,
 }: {
   series: MonthModel[];
   settings: ModelSettings;
   hoveredMonth: MonthId | null;
   onMonthFocus: (monthId: MonthId | null) => void;
+  embedded?: boolean;
 }) {
   const [hoveredStream, setHoveredStream] = React.useState<IncomeKey | null>(null);
   const targets = getExpenseTargets(settings);
@@ -1903,7 +1906,9 @@ function IncomeLayerChart({
 
   return (
     <section
-      className={`visual-panel income-panel${hoveredStream ? " has-stream-focus" : ""}`}
+      className={`${embedded ? "income-panel income-panel-embedded" : "visual-panel income-panel"}${
+        hoveredStream ? " has-stream-focus" : ""
+      }`}
       aria-labelledby="income-heading"
     >
       <div className="section-heading">
@@ -2000,6 +2005,9 @@ function IncomeLayerChart({
           {settings.planningMode === "cashTiming"
             ? `${formatMoney(WGU_TERM_TUITION)} term event`
             : `${formatMoney(WGU_TUITION_MONTHLY)}/mo reserve`}
+        </span>
+        <span>
+          MGIB: Jan. 1 prorated Dec. 8-31, then full monthly from Feb. 1.
         </span>
         <span>VA catch-up is one-time cash, not recurring monthly income.</span>
       </div>
@@ -2208,10 +2216,12 @@ function ScenarioComparison({
 
 function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
   const fullTimeStatus =
-    settings.schoolCUs >= 18 ? "18+ CUs selected; MGIB full-time amount is modeled." : "Under 18 CUs; MGIB full-time amount is not modeled.";
+    settings.schoolCUs >= 18
+      ? "18+ CUs selected; MGIB full-time amount is modeled after the Dec. 8-31 prorated start."
+      : "Under 18 CUs; MGIB full-time amount is not modeled.";
   const planningModeText =
     settings.planningMode === "cashTiming"
-      ? "Cash timing mode uses deposit events for December DFAS cash, Pell, tuition, and MGIB paid in arrears."
+      ? "Cash timing mode uses deposit events for December DFAS cash, Pell, tuition, the Jan. 1 MGIB prorate, and full MGIB from Feb. 1 forward."
       : "Budget-equivalent mode smooths school aid and tuition across the term.";
 
   return (
@@ -2219,7 +2229,7 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Risk and assumption panel</p>
-          <h2 id="assumptions-heading">Do not blur facts into assumptions</h2>
+          <h2 id="assumptions-heading">Facts vs. Assumptions</h2>
         </div>
       </div>
       <div className="assumption-grid">
@@ -2230,7 +2240,7 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
           </h3>
           <ul>
             <li>DOS is December 7, 2026.</li>
-            <li>WGU term is planned for February 1, 2027 through late July 2027.</li>
+            <li>You are already in school; the next WGU term is planned for February 1, 2027 through late July 2027.</li>
             <li>Normal active-duty take-home benchmark is about {formatMoney(ACTIVE_DUTY_MONTHLY)}/mo.</li>
             <li>WGU SCO email says 18 CUs for full-time planning status.</li>
             <li>Terminal-leave civilian work is permitted in your situation.</li>
@@ -2244,6 +2254,7 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
           <ul>
             <li>MGIB uses editable {formatMoney(settings.mgibMonthlyRate)}/mo until the future 2026-27 rate is verified.</li>
             <li>{fullTimeStatus}</li>
+            <li>Cash timing models a Jan. 1 MGIB deposit prorated for Dec. 8-31 enrollment proof, then full monthly MGIB deposits from Feb. 1 forward.</li>
             <li>Pell is independent from the 18-CU MGIB assumption and follows the selected Pell enrollment status.</li>
             <li>{planningModeText}</li>
             <li>Civilian work uses a Texas/San Antonio payroll estimate: federal tax plus FICA or self-employment tax, with no Texas state or local wage income tax modeled.</li>
@@ -2557,6 +2568,26 @@ function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
     {
       label: "WGU / MGIB / Pell",
       cells: series.map((month) => {
+        if (month.id === "2026-12") {
+          return {
+            monthId: month.id,
+            kind: settings.schoolCUs >= 18 ? "active-soft" : "risk",
+            label: settings.schoolCUs >= 18 ? "Dec. 8" : "Verify",
+          };
+        }
+
+        if (month.id === "2027-01") {
+          return {
+            monthId: month.id,
+            kind: settings.schoolCUs >= 18 ? "event" : "risk",
+            label: settings.schoolCUs >= 18
+              ? settings.planningMode === "cashTiming"
+                ? "Prorate"
+                : "MGIB"
+              : "Verify",
+          };
+        }
+
         if (!isSchoolMonth(month.id)) {
           return { monthId: month.id, kind: "empty", label: "" };
         }
@@ -2711,11 +2742,22 @@ function getMgibPay(monthId: MonthId, settings: ModelSettings) {
   }
 
   if (settings.planningMode === "budgetEquivalent") {
-    return isSchoolMonth(monthId) ? getMgibMonthly(settings) : 0;
+    if (monthId === "2026-12") {
+      return getDecemberMgibProrated(settings);
+    }
+
+    const monthIndex = getMonthIndex(monthId);
+    return monthIndex >= getMonthIndex("2027-01") && monthIndex <= getMonthIndex("2027-07")
+      ? getMgibMonthly(settings)
+      : 0;
+  }
+
+  if (monthId === "2027-01") {
+    return getDecemberMgibProrated(settings);
   }
 
   const monthIndex = getMonthIndex(monthId);
-  return monthIndex >= getMonthIndex("2027-03") && monthIndex <= getMonthIndex("2027-07")
+  return monthIndex >= getMonthIndex("2027-02") && monthIndex <= getMonthIndex("2027-07")
     ? getMgibMonthly(settings)
     : 0;
 }
@@ -2742,6 +2784,10 @@ function getPellEnrollmentFactor(pellEnrollment: PellEnrollment) {
 
 function getMgibMonthly(settings: Pick<ModelSettings, "mgibMonthlyRate">) {
   return Math.max(0, settings.mgibMonthlyRate);
+}
+
+function getDecemberMgibProrated(settings: Pick<ModelSettings, "mgibMonthlyRate">) {
+  return getMgibMonthly(settings) * (MGIB_DECEMBER_DAYS_PAYABLE / 31);
 }
 
 function getTuitionForMonth(monthId: MonthId, settings: Pick<ModelSettings, "planningMode" | "schoolCUs">) {
