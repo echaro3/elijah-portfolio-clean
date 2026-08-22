@@ -329,7 +329,7 @@ export class FinancialTimelineScene {
   setCameraPreset(preset: CameraPreset, immediate = false) {
     const riskMonths = this.series
       .map((month, index) => ({ month, index }))
-      .filter(({ month }) => month.status === "red" || month.id === "2027-01" || month.id === "2027-02");
+      .filter(({ month }) => month.status === "red");
     const centerIndex =
       preset === "risk" && riskMonths.length > 0
         ? riskMonths.reduce((sum, item) => sum + item.index, 0) / riskMonths.length

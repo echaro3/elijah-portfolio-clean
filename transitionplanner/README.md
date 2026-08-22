@@ -1,21 +1,17 @@
 # Financial Transition Planner
 
-A private planning dashboard for modeling the August 2026 to July 2027 Air Force separation window, civilian bridge income, WGU education benefits, VA disability timing, UCX fallback assumptions, Pell cases, and reserve needs.
+A privacy-first Veteran transition and income planner for modeling a user-configurable 12-month transition window, civilian employment, VA disability timing, education benefits, Pell assumptions, optional UCX planning, expenses, and reserve needs.
 
-The live planner is published at:
-
-```text
-https://elijahcharo.com/transitionplanner
-```
+The app is designed to run at `/transitionplanner/` behind the main website.
 
 ## What It Models
 
-- Active-duty pay through the December 7, 2026 separation date
+- Active-duty pay through a user-entered separation date
 - Civilian income as hourly or yearly pay
-- Texas/San Antonio take-home estimates using federal tax, FICA, or self-employment tax
+- Estimated take-home using federal tax, FICA, or self-employment tax, with manual take-home override
 - VA disability monthly compensation plus optional SMC-K
 - VA catch-up deposit timing for delayed rating decisions
-- MGIB, Pell, WGU tuition reserve, UCX, and DFAS deduction scenarios
+- MGIB, Pell, tuition reserve, UCX, and military-pay timing scenarios
 - Local browser persistence through `localStorage`
 
 ## Tech Stack

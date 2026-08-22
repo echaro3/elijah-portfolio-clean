@@ -23,7 +23,7 @@ export const TIMELINE_STREAMS: IncomeKey[] = [
   "ucx",
   "vaBackpay",
   "va",
-  "mgib",
+  "education",
   "pell",
 ];
 
@@ -58,8 +58,8 @@ export const STREAM_VISUALS: Record<IncomeKey, StreamVisual> = {
     cssColor: "#72e9a8",
     emissive: 0x1b8d4b,
   },
-  mgib: {
-    label: "MGIB",
+  education: {
+    label: "Education",
     color: 0xb9a1ff,
     cssColor: "#b9a1ff",
     emissive: 0x6848c9,

@@ -17,6 +17,16 @@ import {
   SlidersHorizontal,
   WalletCards,
 } from "lucide-react";
+import {
+  BENEFIT_RATE_DATASETS,
+  MGIB_ACTIVE_DUTY_RATE_DATASET,
+  PELL_GRANT_RATE_DATASET,
+  SMC_K_RATE_DATASET,
+  VA_DISABILITY_RATE_DATASET,
+  type PellCaseId,
+  type VaRating,
+} from "./data/benefitRates";
+import { SOURCE_LINKS } from "./data/sources";
 import { getExpenseTargets } from "./plannerModel";
 
 const FinancialTimeline3D = React.lazy(
@@ -35,40 +45,43 @@ const DETAILED_MONEY_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-const MONTHS = [
-  { id: "2026-08", short: "Aug", label: "August 2026" },
-  { id: "2026-09", short: "Sep", label: "September 2026" },
-  { id: "2026-10", short: "Oct", label: "October 2026" },
-  { id: "2026-11", short: "Nov", label: "November 2026" },
-  { id: "2026-12", short: "Dec", label: "December 2026" },
-  { id: "2027-01", short: "Jan", label: "January 2027" },
-  { id: "2027-02", short: "Feb", label: "February 2027" },
-  { id: "2027-03", short: "Mar", label: "March 2027" },
-  { id: "2027-04", short: "Apr", label: "April 2027" },
-  { id: "2027-05", short: "May", label: "May 2027" },
-  { id: "2027-06", short: "Jun", label: "June 2027" },
-  { id: "2027-07", short: "Jul", label: "July 2027" },
-] as const;
+const PROJECTION_MONTH_COUNT = 12;
+const DEFAULT_TIMELINE_START_MONTH = getCurrentMonthId();
+const DEFAULT_SEPARATION_DATE = `${addMonths(DEFAULT_TIMELINE_START_MONTH, 4)}-15`;
+const DEFAULT_SCHOOL_START_DATE = `${addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 1)}-01`;
+const DEFAULT_SCHOOL_END_MONTH = addMonths(toMonthId(DEFAULT_SCHOOL_START_DATE), 5);
+const DEFAULT_SCHOOL_END_DATE = `${DEFAULT_SCHOOL_END_MONTH}-${getDaysInMonth(DEFAULT_SCHOOL_END_MONTH)}`;
+const MONTHS = buildTimelineMonths(DEFAULT_TIMELINE_START_MONTH, PROJECTION_MONTH_COUNT);
 
-export type MonthId = (typeof MONTHS)[number]["id"];
-type Rating = 80 | 90 | 100;
+export type MonthId = string;
+type Rating = VaRating;
 type ScenarioId = "schoolFirst" | "bridge" | "partTime" | "fullTime" | "delayedVa";
 type WorkType = "none" | "contract" | "partTime" | "permanent";
 type UcxMode = "off" | "ifEligible";
-type PellCaseId = "typical" | "adjusted" | "maximum";
-type ContractEnd = "2026-12" | "2027-01" | "2027-02" | "2027-03";
-type VaStart = "2027-01" | "2027-02" | "2027-03" | "2027-04" | "2027-05" | "2027-06" | "none";
+type ContractEnd = MonthId;
+type VaStart = MonthId | "none";
 type PayMode = "hourly" | "annual";
 type PlanningMode = "cashTiming" | "budgetEquivalent";
 type PayrollType = "w2" | "selfEmployed";
 type FilingStatus = "single" | "marriedJoint" | "headOfHousehold";
-type FinalPayMonth = "2026-12" | "2027-01" | "none";
+type FinalPayMonth = MonthId | "none";
 type PellEnrollment = "none" | "half" | "threeQuarter" | "full";
-export type IncomeKey = "military" | "civilian" | "ucx" | "vaBackpay" | "va" | "mgib" | "pell";
+type SchoolLoad = "none" | "half" | "threeQuarter" | "full";
+type EducationBenefit = "none" | "mgib" | "post911" | "vre";
+export type IncomeKey = "military" | "civilian" | "ucx" | "vaBackpay" | "va" | "education" | "pell";
 export type Status = "green" | "yellow" | "red";
 
 export type ModelSettings = {
   planningMode: PlanningMode;
+  timelineStartMonth: MonthId;
+  alreadySeparated: boolean;
+  separationDate: string;
+  terminalLeaveStartDate: string;
+  schoolStartDate: string;
+  schoolEndDate: string;
+  workStartMonth: MonthId;
+  pellDisbursementMonth: MonthId;
+  activeDutyMonthly: number;
   rating: Rating;
   smcK: boolean;
   vaStart: VaStart;
@@ -81,18 +94,22 @@ export type ModelSettings = {
   partTimeHours: number;
   payrollType: PayrollType;
   filingStatus: FilingStatus;
+  useManualTakeHome: boolean;
+  manualMonthlyTakeHome: number;
   pretaxMonthlyDeductions: number;
   posttaxMonthlyDeductions: number;
   extraTaxReservePercent: number;
   includeVaBackpay: boolean;
   ucxMode: UcxMode;
   ucxWeeklyBenefit: number;
+  educationBenefit: EducationBenefit;
+  schoolLoad: SchoolLoad;
+  educationMonthlyRate: number;
   pellCase: PellCaseId;
   pellEnrollment: PellEnrollment;
-  schoolCUs: number;
-  mgibMonthlyRate: number;
-  dfasDeductionTotal: number;
-  decemberFirstPaycheck: number;
+  schoolTuition: number;
+  militaryPayDeductionTotal: number;
+  separationMonthMilitaryPay: number;
   finalMilitaryPay: number;
   finalMilitaryPayMonth: FinalPayMonth;
   essentialExpenseTarget: number;
@@ -131,22 +148,21 @@ type ScenarioPreset = {
   ucxImplication: string;
 };
 
-const ACTIVE_DUTY_MONTHLY = 4600;
-const DEFAULT_ESSENTIAL_EXPENSE_TARGET = 4300;
-const DEFAULT_NORMAL_LIFESTYLE_TARGET = 4600;
-const DEFAULT_IDEAL_SAVINGS_TARGET = 5000;
-const WGU_TERM_TUITION = 4030;
-const WGU_TUITION_MONTHLY = WGU_TERM_TUITION / 6;
-const DEFAULT_MGIB_FULL_TIME = 2518;
-const MGIB_DECEMBER_START_DAY = 8;
-const MGIB_DECEMBER_DAYS_PAYABLE = 31 - MGIB_DECEMBER_START_DAY + 1;
-const DECEMBER_FIRST_PAYCHECK_DEFAULT = ACTIVE_DUTY_MONTHLY / 2;
-const FINAL_MILITARY_PAY_DEFAULT = (ACTIVE_DUTY_MONTHLY / 31) * 7;
+const DEFAULT_ACTIVE_DUTY_MONTHLY = 4200;
+const DEFAULT_ESSENTIAL_EXPENSE_TARGET = 3200;
+const DEFAULT_NORMAL_LIFESTYLE_TARGET = 4000;
+const DEFAULT_IDEAL_SAVINGS_TARGET = 4800;
+const DEFAULT_SCHOOL_TUITION = 0;
+const DEFAULT_EDUCATION_MONTHLY_RATE = MGIB_ACTIVE_DUTY_RATE_DATASET.fullTimeMonthlyRate;
+const SEPARATION_MONTH_MILITARY_PAY_DEFAULT = 0;
+const FINAL_MILITARY_PAY_DEFAULT = 0;
 const UCX_WEEKLY_MAX = 605;
 const DEFAULT_UCX_WEEKLY_BENEFIT = UCX_WEEKLY_MAX;
 const UCX_TAX_HOLD_BACK = 0.9;
-const SMC_K_RATE = 139.87;
-const PLANNER_STORAGE_KEY = "elijah-transition-planner:v1";
+const SMC_K_RATE = SMC_K_RATE_DATASET.monthlyRate;
+const VA_RATES = VA_DISABILITY_RATE_DATASET.rates;
+const PELL_CASES = PELL_GRANT_RATE_DATASET.cases;
+const PLANNER_STORAGE_KEY = "veteran-transition-planner:v1";
 const SOCIAL_SECURITY_WAGE_BASE_2026 = 184500;
 const SOCIAL_SECURITY_RATE = 0.062;
 const MEDICARE_RATE = 0.0145;
@@ -195,13 +211,7 @@ const TAX_BRACKETS_2026: Record<FilingStatus, { upTo: number; rate: number }[]> 
   ],
 };
 
-const VA_RATES: Record<Rating, number> = {
-  80: 2102.15,
-  90: 2362.3,
-  100: 3938.58,
-};
-
-const INCOME_ORDER: IncomeKey[] = ["military", "civilian", "ucx", "vaBackpay", "va", "mgib", "pell"];
+const INCOME_ORDER: IncomeKey[] = ["military", "civilian", "ucx", "vaBackpay", "va", "education", "pell"];
 
 const INCOME_LABELS: Record<IncomeKey, string> = {
   military: "Military pay",
@@ -209,62 +219,51 @@ const INCOME_LABELS: Record<IncomeKey, string> = {
   ucx: "UCX",
   vaBackpay: "VA catch-up",
   va: "VA monthly",
-  mgib: "MGIB",
+  education: "Education benefit",
   pell: "Pell",
-};
-
-const PELL_CASES: Record<
-  PellCaseId,
-  { label: string; termAmount: number; confidence: string; note: string }
-> = {
-  typical: {
-    label: "Typical",
-    termAmount: 1700,
-    confidence: "Historical working amount",
-    note: "Modeled from your prior Pell pattern, not a guarantee.",
-  },
-  adjusted: {
-    label: "Adjusted",
-    termAmount: 3000,
-    confidence: "Professional judgment target",
-    note: "Middle of the $2,500-$3,500 special-circumstances range.",
-  },
-  maximum: {
-    label: "Maximum",
-    termAmount: 7395 / 2,
-    confidence: "Verified 2026-27 annual ceiling",
-    note: "Modeled as half of the $7,395 annual max; 2027-28 still needs verification.",
-  },
 };
 
 const BASE_SETTINGS: ModelSettings = {
   planningMode: "cashTiming",
-  rating: 90,
-  smcK: true,
-  vaStart: "2027-03",
+  timelineStartMonth: DEFAULT_TIMELINE_START_MONTH,
+  alreadySeparated: false,
+  separationDate: DEFAULT_SEPARATION_DATE,
+  terminalLeaveStartDate: `${addMonths(toMonthId(DEFAULT_SEPARATION_DATE), -2)}-01`,
+  schoolStartDate: DEFAULT_SCHOOL_START_DATE,
+  schoolEndDate: DEFAULT_SCHOOL_END_DATE,
+  workStartMonth: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), -1),
+  pellDisbursementMonth: toMonthId(DEFAULT_SCHOOL_START_DATE),
+  activeDutyMonthly: DEFAULT_ACTIVE_DUTY_MONTHLY,
+  rating: 70,
+  smcK: false,
+  vaStart: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 3),
   workType: "contract",
-  contractEnd: "2027-01",
+  contractEnd: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 1),
   payMode: "hourly",
-  hourlyRate: 40,
-  annualSalary: 85000,
+  hourlyRate: 30,
+  annualSalary: 65000,
   weeklyHours: 40,
   partTimeHours: 20,
   payrollType: "w2",
   filingStatus: "single",
+  useManualTakeHome: false,
+  manualMonthlyTakeHome: 3500,
   pretaxMonthlyDeductions: 0,
   posttaxMonthlyDeductions: 0,
   extraTaxReservePercent: 2,
   includeVaBackpay: true,
   ucxMode: "off",
   ucxWeeklyBenefit: DEFAULT_UCX_WEEKLY_BENEFIT,
+  educationBenefit: "mgib",
+  schoolLoad: "full",
+  educationMonthlyRate: DEFAULT_EDUCATION_MONTHLY_RATE,
   pellCase: "typical",
   pellEnrollment: "full",
-  schoolCUs: 18,
-  mgibMonthlyRate: DEFAULT_MGIB_FULL_TIME,
-  dfasDeductionTotal: 0,
-  decemberFirstPaycheck: DECEMBER_FIRST_PAYCHECK_DEFAULT,
+  schoolTuition: DEFAULT_SCHOOL_TUITION,
+  militaryPayDeductionTotal: 0,
+  separationMonthMilitaryPay: SEPARATION_MONTH_MILITARY_PAY_DEFAULT,
   finalMilitaryPay: FINAL_MILITARY_PAY_DEFAULT,
-  finalMilitaryPayMonth: "2026-12",
+  finalMilitaryPayMonth: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 1),
   essentialExpenseTarget: DEFAULT_ESSENTIAL_EXPENSE_TARGET,
   normalLifestyleTarget: DEFAULT_NORMAL_LIFESTYLE_TARGET,
   idealSavingsTarget: DEFAULT_IDEAL_SAVINGS_TARGET,
@@ -275,46 +274,46 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     id: "schoolFirst",
     label: "Scenario A - School-first",
     shortLabel: "School-first",
-    description: "No civilian job after separation; the Feb. 1 WGU term carries the full-time planning load.",
-    recommendation: "Only comfortable if UCX is approved or you carry a serious reserve into January.",
-    stress: "High until VA and MGIB are flowing",
+    description: "No civilian job after separation; school benefits and reserves carry the transition.",
+    recommendation: "Only comfortable if benefits are confirmed or the reserve target covers delayed cash.",
+    stress: "High until VA and education benefits are flowing",
     schoolTime: "Best",
     risk: "High",
     pellImplication: "Cleanest reduced-income story for professional judgment, but not automatic.",
-    ucxImplication: "Possible after separation if eligible; full-time school availability rules need TWC verification.",
+    ucxImplication: "Possible after separation if eligible; school availability rules need state verification.",
     settings: {
       ...BASE_SETTINGS,
       workType: "none",
-      vaStart: "2027-03",
+      vaStart: addMonths(toMonthId(BASE_SETTINGS.separationDate), 3),
       ucxMode: "ifEligible",
-      hourlyRate: 40,
+      hourlyRate: 30,
     },
   },
   bridge: {
     id: "bridge",
     label: "Scenario B - Temporary bridge",
     shortLabel: "Contract bridge",
-    description: "Temporary technical contract starts in late October and ends before the Feb. 1 WGU term becomes the main focus.",
-    recommendation: "Best balance: use the Oct-Jan overlap to build reserve, clean up urgent debt, and keep school optionality.",
+    description: "Temporary civilian work bridges the final military-pay period and early school/benefit timing.",
+    recommendation: "Best balance: use any work overlap to build reserve, clean up urgent debt, and keep school optionality.",
     stress: "Medium, then lower if reserve is saved",
     schoolTime: "Strong after contract ends",
     risk: "Medium",
     pellImplication: "Some income may weaken the special-circumstances case, but a natural contract end is easier to explain.",
-    ucxImplication: "Potentially better fact pattern if the contract ends naturally; still verify with TWC.",
+    ucxImplication: "Potentially better fact pattern if the contract ends naturally; still verify with the state workforce agency.",
     settings: {
       ...BASE_SETTINGS,
       workType: "contract",
-      contractEnd: "2027-01",
-      vaStart: "2027-03",
+      contractEnd: addMonths(toMonthId(BASE_SETTINGS.separationDate), 1),
+      vaStart: addMonths(toMonthId(BASE_SETTINGS.separationDate), 3),
       ucxMode: "off",
-      hourlyRate: 40,
+      hourlyRate: 30,
     },
   },
   partTime: {
     id: "partTime",
-    label: "Scenario C - Part-time tech role",
+    label: "Scenario C - Part-time work",
     shortLabel: "Part-time + school",
-    description: "Part-time technical work continues while you carry a full-time WGU load.",
+    description: "Part-time civilian work continues while school or training remains the primary transition plan.",
     recommendation: "Strong if you can cap hours and protect study pace; best practical fallback if VA is late.",
     stress: "Medium",
     schoolTime: "Good if hours stay capped",
@@ -324,9 +323,9 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     settings: {
       ...BASE_SETTINGS,
       workType: "partTime",
-      hourlyRate: 50,
+      hourlyRate: 30,
       partTimeHours: 20,
-      vaStart: "2027-03",
+      vaStart: addMonths(toMonthId(BASE_SETTINGS.separationDate), 3),
       ucxMode: "off",
     },
   },
@@ -334,8 +333,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     id: "fullTime",
     label: "Scenario D - Full-time job + school",
     shortLabel: "Full-time job",
-    description: "Permanent full-time technical work continues alongside WGU.",
-    recommendation: "Financially strongest, but it risks turning WGU into the second job instead of the main transition plan.",
+    description: "Permanent full-time civilian work continues alongside school, training, or benefit planning.",
+    recommendation: "Financially strongest, but it can turn school into a second job instead of the main transition plan.",
     stress: "High workload, low cash stress",
     schoolTime: "Weakest",
     risk: "Low cash risk, high time risk",
@@ -344,8 +343,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     settings: {
       ...BASE_SETTINGS,
       workType: "permanent",
-      hourlyRate: 35,
-      vaStart: "2027-03",
+      hourlyRate: 30,
+      vaStart: addMonths(toMonthId(BASE_SETTINGS.separationDate), 3),
       ucxMode: "off",
     },
   },
@@ -353,9 +352,9 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     id: "delayedVa",
     label: "Scenario E - Delayed VA stress case",
     shortLabel: "Delayed VA",
-    description: "VA cash does not arrive until May, with no civilian work and no UCX relied on.",
+    description: "VA cash is delayed several months, with no civilian work and no UCX relied on.",
     recommendation: "Use this as the no-surprises reserve test; do not let this be the unplanned default.",
-    stress: "Very high in January-April",
+    stress: "Very high before VA begins",
     schoolTime: "Best, if affordable",
     risk: "Very high",
     pellImplication: "Strong reduced-income argument, but timing and award are still school decisions.",
@@ -363,29 +362,12 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     settings: {
       ...BASE_SETTINGS,
       workType: "none",
-      vaStart: "2027-05",
+      vaStart: addMonths(toMonthId(BASE_SETTINGS.separationDate), 5),
       ucxMode: "off",
-      hourlyRate: 40,
+      hourlyRate: 30,
     },
   },
 };
-
-const CONTRACT_END_OPTIONS: { value: ContractEnd; label: string }[] = [
-  { value: "2026-12", label: "Dec 2026" },
-  { value: "2027-01", label: "Jan 2027" },
-  { value: "2027-02", label: "Feb 2027" },
-  { value: "2027-03", label: "Mar 2027" },
-];
-
-const VA_START_OPTIONS: { value: VaStart; label: string }[] = [
-  { value: "2027-01", label: "Jan 2027" },
-  { value: "2027-02", label: "Feb 2027" },
-  { value: "2027-03", label: "Mar 2027" },
-  { value: "2027-04", label: "Apr 2027" },
-  { value: "2027-05", label: "May 2027" },
-  { value: "2027-06", label: "Jun 2027" },
-  { value: "none", label: "No VA by July" },
-];
 
 const PAYROLL_TYPE_OPTIONS: { value: PayrollType; label: string }[] = [
   { value: "w2", label: "W-2 employee" },
@@ -401,14 +383,22 @@ const FILING_STATUS_OPTIONS: { value: FilingStatus; label: string }[] = [
 const WORK_OPTIONS: { value: WorkType; label: string }[] = [
   { value: "none", label: "No civilian work" },
   { value: "contract", label: "Temporary contract" },
-  { value: "partTime", label: "Part-time tech" },
+  { value: "partTime", label: "Part-time work" },
   { value: "permanent", label: "Full-time civilian" },
 ];
 
-const FINAL_PAY_MONTH_OPTIONS: { value: FinalPayMonth; label: string }[] = [
-  { value: "2026-12", label: "Dec 2026" },
-  { value: "2027-01", label: "Jan 2027" },
-  { value: "none", label: "Hold out until confirmed" },
+const EDUCATION_BENEFIT_OPTIONS: { value: EducationBenefit; label: string }[] = [
+  { value: "none", label: "No education benefit" },
+  { value: "mgib", label: "MGIB-AD" },
+  { value: "post911", label: "Post-9/11 GI Bill" },
+  { value: "vre", label: "VR&E" },
+];
+
+const SCHOOL_LOAD_OPTIONS: { value: SchoolLoad; label: string; factor: number }[] = [
+  { value: "none", label: "Not enrolled", factor: 0 },
+  { value: "half", label: "Half-time", factor: 0.5 },
+  { value: "threeQuarter", label: "3/4-time", factor: 0.75 },
+  { value: "full", label: "Full-time", factor: 1 },
 ];
 
 const PELL_ENROLLMENT_OPTIONS: {
@@ -423,6 +413,14 @@ const PELL_ENROLLMENT_OPTIONS: {
 ];
 
 const RATING_OPTIONS: { value: Rating; label: string }[] = [
+  { value: 0, label: "0%" },
+  { value: 10, label: "10%" },
+  { value: 20, label: "20%" },
+  { value: 30, label: "30%" },
+  { value: 40, label: "40%" },
+  { value: 50, label: "50%" },
+  { value: 60, label: "60%" },
+  { value: 70, label: "70%" },
   { value: 80, label: "80%" },
   { value: 90, label: "90%" },
   { value: 100, label: "100%" },
@@ -442,135 +440,54 @@ const UCX_MODE_OPTIONS: { value: UcxMode; label: string }[] = [
 
 const ACTION_PLAN = [
   {
-    month: "August 2026",
+    month: "Step 1",
     title: "Lock the ground truth",
     actions: [
-      "Enter exact DFAS deductions as soon as the next two LES/pay amounts are visible.",
-      "Build a one-page expense floor: rent, utilities, phone, food, gas, debt minimums, medical, subscriptions.",
-      "Save the WGU SCO email showing 18 CUs for full-time and ask whether this applies to MGIB certification for your exact program.",
-      "Confirm BDD exam status, missing evidence, direct deposit, and VA.gov claim notifications.",
+      "Enter your actual separation date, school dates, expected job timing, and current cash reserve.",
+      "Build an expense floor with housing, utilities, transportation, food, debt minimums, healthcare, phone, and insurance.",
+      "Keep official benefit letters, school certification emails, and final military-pay documents in one place.",
+      "Use actual deposits to replace estimates as soon as payments begin.",
     ],
   },
   {
-    month: "September 2026",
-    title: "Create the bridge pipeline",
+    month: "Step 2",
+    title: "Compare work and school paths",
     actions: [
-      "Target Power Platform, SharePoint/M365, Power BI, reporting, and short-term IT contract roles.",
-      "Ask recruiters for contracts that can start during terminal leave and end naturally around late January or February.",
-      "Set a transition reserve target before separation, then treat overlap income as reserve/debt cleanup first.",
-      "Confirm terminal leave start date and any unit restrictions in writing.",
+      "Model no job, temporary work, part-time work, and full-time work against the same expense floor.",
+      "Use the manual take-home override if you already know an actual paycheck amount.",
+      "Compare cash timing and budget-equivalent views before committing a lump-sum benefit to monthly bills.",
+      "Set a reserve target before relying on any delayed VA, Pell, or unemployment payment.",
     ],
   },
   {
-    month: "October 2026",
-    title: "Start the overlap deliberately",
+    month: "Step 3",
+    title: "Verify benefits before relying",
     actions: [
-      "If a contract starts, keep it temporary and written so the end date supports flexibility and possible UCX review.",
-      "Freeze lifestyle creep from double income; route surplus to reserve, urgent debt, and school transition costs.",
-      "Schedule WGU financial aid and military/veterans-benefits calls before October gets crowded.",
-      "Track all job applications and recruiter conversations in case unemployment work-search evidence matters later.",
+      "Confirm GI Bill, VR&E, Pell, and school certification details with the official program or school office.",
+      "Treat VA catch-up as one-time money, not recurring income.",
+      "Check state unemployment or UCX rules directly before counting those payments.",
+      "Flag future benefit rates as planning placeholders until the official rate period is published.",
     ],
   },
   {
-    month: "November 2026",
-    title: "Prepare the benefit handoff",
+    month: "Step 4",
+    title: "Plan the danger months",
     actions: [
-      "Confirm current WGU enrollment, the Feb. 1 term, 18+ CU plan, MGIB certification path, and any required VA enrollment steps.",
-      "Prepare FAFSA professional-judgment documentation: orders, projected income, final LES plan, debt context, and separation docs.",
-      "Make a January cash plan that works without VA backpay.",
-      "Decide whether the contract should end in January, February, or continue part time.",
+      "Look for months below essential expenses and decide how each shortfall would be covered.",
+      "Separate recurring income from one-time deposits in the results.",
+      "Stress test a delayed VA decision and a lower-than-expected Pell award.",
+      "Avoid using backpay or disbursements in the budget before the money is deposited.",
     ],
   },
   {
-    month: "December 2026",
-    title: "Cross the DOS line cleanly",
+    month: "Step 5",
+    title: "Refresh with actuals",
     actions: [
-      "After December 7, secure DD-214 copies, final LES records, and any separation/pay documents.",
-      "Submit or confirm the Dec. 8-31 enrollment proof path for the possible January MGIB prorated payment.",
-      "If no work or a contract ends, contact TWC about UCX timing, availability rules, and WGU compatibility.",
-      "Do not budget VA backpay before it is deposited.",
-      "Update the planner with actual December military pay and final-pay timing.",
+      "Update the model after final military pay, first civilian paycheck, school aid, or VA cash arrives.",
+      "Clear saved data before using the calculator on a shared computer.",
+      "Print or save a PDF for your own records without sending financial inputs to a server.",
+      "Re-run scenarios whenever a major assumption changes.",
     ],
-  },
-  {
-    month: "January 2027",
-    title: "Finish the February launch checklist",
-    actions: [
-      "Check whether the Jan. 1 MGIB deposit reflects the Dec. 8-31 prorated enrollment period.",
-      "Confirm the new Feb. 1 WGU term registration at 18+ CUs and VA education certification before February 1.",
-      "Submit or finalize professional-judgment materials if WGU says your case is ready.",
-      "If the contract ends naturally, collect end-of-contract documentation.",
-      "Make a February bill calendar around MGIB, Pell disbursement timing, and any VA uncertainty.",
-    ],
-  },
-  {
-    month: "February 2027",
-    title: "Stabilize and reassess",
-    actions: [
-      "Start the new WGU term and verify full MGIB payments against actual deposits, not award promises.",
-      "If VA is not flowing, decide whether to add part-time technical work before reserves get thin.",
-      "Re-run this model using the official 2026-27 MGIB rate if VA has published it by then.",
-      "Use the first reliable month to choose school-first, part-time, or full-time work for March-July.",
-    ],
-  },
-];
-
-const SOURCE_LINKS = [
-  {
-    label: "VA 2026 disability compensation rates",
-    href: "https://www.va.gov/disability/compensation-rates/veteran-rates/",
-  },
-  {
-    label: "VA 2026 SMC-K rate",
-    href: "https://www.va.gov/disability/compensation-rates/special-monthly-compensation-rates/",
-  },
-  {
-    label: "VA MGIB-AD current rates",
-    href: "https://www.va.gov/education/benefit-rates/montgomery-active-duty-rates/",
-  },
-  {
-    label: "VA MGIB-AD future-rate page",
-    href: "https://www.va.gov/education/benefit-rates/montgomery-gi-bill-active-duty-rates/future-rates/",
-  },
-  {
-    label: "VA disability effective dates",
-    href: "https://www.va.gov/disability/effective-date/",
-  },
-  {
-    label: "VA first payment after rating",
-    href: "https://www.va.gov/disability/about-disability-ratings/after-you-get-a-rating/",
-  },
-  {
-    label: "Federal Student Aid Pell Grant",
-    href: "https://studentaid.gov/understand-aid/types/grants/pell",
-  },
-  {
-    label: "WGU financial aid and professional judgment",
-    href: "https://www.wgu.edu/financial-aid-tuition/financial-aid/apply.html",
-  },
-  {
-    label: "Texas unemployment benefit amounts",
-    href: "https://www.twc.texas.gov/programs/unemployment-benefits/eligibility-benefit-amounts",
-  },
-  {
-    label: "DOL UCX overview",
-    href: "https://oui.doleta.gov/unemploy/ucx.asp",
-  },
-  {
-    label: "IRS 2026 federal tax tables",
-    href: "https://www.irs.gov/pub/irs-drop/rp-25-32.pdf",
-  },
-  {
-    label: "IRS 2026 withholding methods",
-    href: "https://www.irs.gov/publications/p15t",
-  },
-  {
-    label: "SSA 2026 Social Security wage base",
-    href: "https://www.ssa.gov/oact/cola/cbb.html",
-  },
-  {
-    label: "Texas Comptroller tax overview",
-    href: "https://comptroller.texas.gov/taxes/",
   },
 ];
 
@@ -632,6 +549,37 @@ function normalizePlannerState(value: unknown): PlannerState | null {
       planningMode: isPlanningMode(savedSettings.planningMode)
         ? savedSettings.planningMode
         : baseSettings.planningMode,
+      timelineStartMonth: isMonthId(savedSettings.timelineStartMonth)
+        ? savedSettings.timelineStartMonth
+        : baseSettings.timelineStartMonth,
+      alreadySeparated:
+        typeof savedSettings.alreadySeparated === "boolean"
+          ? savedSettings.alreadySeparated
+          : baseSettings.alreadySeparated,
+      separationDate: isDateInput(savedSettings.separationDate)
+        ? savedSettings.separationDate
+        : baseSettings.separationDate,
+      terminalLeaveStartDate: isDateInput(savedSettings.terminalLeaveStartDate)
+        ? savedSettings.terminalLeaveStartDate
+        : baseSettings.terminalLeaveStartDate,
+      schoolStartDate: isDateInput(savedSettings.schoolStartDate)
+        ? savedSettings.schoolStartDate
+        : baseSettings.schoolStartDate,
+      schoolEndDate: isDateInput(savedSettings.schoolEndDate)
+        ? savedSettings.schoolEndDate
+        : baseSettings.schoolEndDate,
+      workStartMonth: isMonthId(savedSettings.workStartMonth)
+        ? savedSettings.workStartMonth
+        : baseSettings.workStartMonth,
+      pellDisbursementMonth: isMonthId(savedSettings.pellDisbursementMonth)
+        ? savedSettings.pellDisbursementMonth
+        : baseSettings.pellDisbursementMonth,
+      activeDutyMonthly: clampNumber(
+        savedSettings.activeDutyMonthly,
+        baseSettings.activeDutyMonthly,
+        0,
+        20000,
+      ),
       rating: isRating(savedSettings.rating) ? savedSettings.rating : baseSettings.rating,
       smcK: typeof savedSettings.smcK === "boolean" ? savedSettings.smcK : baseSettings.smcK,
       vaStart: isVaStart(savedSettings.vaStart) ? savedSettings.vaStart : baseSettings.vaStart,
@@ -650,6 +598,16 @@ function normalizePlannerState(value: unknown): PlannerState | null {
       filingStatus: isFilingStatus(savedSettings.filingStatus)
         ? savedSettings.filingStatus
         : baseSettings.filingStatus,
+      useManualTakeHome:
+        typeof savedSettings.useManualTakeHome === "boolean"
+          ? savedSettings.useManualTakeHome
+          : baseSettings.useManualTakeHome,
+      manualMonthlyTakeHome: clampNumber(
+        savedSettings.manualMonthlyTakeHome,
+        baseSettings.manualMonthlyTakeHome,
+        0,
+        50000,
+      ),
       pretaxMonthlyDeductions: clampNumber(
         savedSettings.pretaxMonthlyDeductions,
         baseSettings.pretaxMonthlyDeductions,
@@ -679,28 +637,34 @@ function normalizePlannerState(value: unknown): PlannerState | null {
         0,
         UCX_WEEKLY_MAX,
       ),
+      educationBenefit: isEducationBenefit(savedSettings.educationBenefit)
+        ? savedSettings.educationBenefit
+        : baseSettings.educationBenefit,
+      schoolLoad: isSchoolLoad(savedSettings.schoolLoad)
+        ? savedSettings.schoolLoad
+        : baseSettings.schoolLoad,
+      educationMonthlyRate: clampNumber(
+        savedSettings.educationMonthlyRate,
+        baseSettings.educationMonthlyRate,
+        0,
+        10000,
+      ),
       pellCase: isPellCaseId(savedSettings.pellCase)
         ? savedSettings.pellCase
         : baseSettings.pellCase,
       pellEnrollment: isPellEnrollment(savedSettings.pellEnrollment)
         ? savedSettings.pellEnrollment
         : baseSettings.pellEnrollment,
-      schoolCUs: clampNumber(savedSettings.schoolCUs, baseSettings.schoolCUs, 0, 40),
-      mgibMonthlyRate: clampNumber(
-        savedSettings.mgibMonthlyRate,
-        baseSettings.mgibMonthlyRate,
-        0,
-        5000,
-      ),
-      dfasDeductionTotal: clampNumber(
-        savedSettings.dfasDeductionTotal,
-        baseSettings.dfasDeductionTotal,
+      schoolTuition: clampNumber(savedSettings.schoolTuition, baseSettings.schoolTuition, 0, 50000),
+      militaryPayDeductionTotal: clampNumber(
+        savedSettings.militaryPayDeductionTotal,
+        baseSettings.militaryPayDeductionTotal,
         0,
         20000,
       ),
-      decemberFirstPaycheck: clampNumber(
-        savedSettings.decemberFirstPaycheck,
-        baseSettings.decemberFirstPaycheck,
+      separationMonthMilitaryPay: clampNumber(
+        savedSettings.separationMonthMilitaryPay,
+        baseSettings.separationMonthMilitaryPay,
         0,
         10000,
       ),
@@ -1117,6 +1081,15 @@ function App() {
       settings: {
         ...next,
         planningMode: current.settings.planningMode,
+        timelineStartMonth: current.settings.timelineStartMonth,
+        alreadySeparated: current.settings.alreadySeparated,
+        separationDate: current.settings.separationDate,
+        terminalLeaveStartDate: current.settings.terminalLeaveStartDate,
+        schoolStartDate: current.settings.schoolStartDate,
+        schoolEndDate: current.settings.schoolEndDate,
+        workStartMonth: current.settings.workStartMonth,
+        pellDisbursementMonth: current.settings.pellDisbursementMonth,
+        activeDutyMonthly: current.settings.activeDutyMonthly,
         rating: current.settings.rating,
         smcK: current.settings.smcK,
         payMode: current.settings.payMode,
@@ -1126,24 +1099,46 @@ function App() {
         partTimeHours: current.settings.partTimeHours,
         payrollType: current.settings.payrollType,
         filingStatus: current.settings.filingStatus,
+        useManualTakeHome: current.settings.useManualTakeHome,
+        manualMonthlyTakeHome: current.settings.manualMonthlyTakeHome,
         pretaxMonthlyDeductions: current.settings.pretaxMonthlyDeductions,
         posttaxMonthlyDeductions: current.settings.posttaxMonthlyDeductions,
         extraTaxReservePercent: current.settings.extraTaxReservePercent,
         includeVaBackpay: current.settings.includeVaBackpay,
         ucxWeeklyBenefit: current.settings.ucxWeeklyBenefit,
+        educationBenefit: current.settings.educationBenefit,
+        schoolLoad: current.settings.schoolLoad,
+        educationMonthlyRate: current.settings.educationMonthlyRate,
         pellCase: current.settings.pellCase,
         pellEnrollment: current.settings.pellEnrollment,
-        mgibMonthlyRate: current.settings.mgibMonthlyRate,
-        dfasDeductionTotal: current.settings.dfasDeductionTotal,
-        decemberFirstPaycheck: current.settings.decemberFirstPaycheck,
+        schoolTuition: current.settings.schoolTuition,
+        militaryPayDeductionTotal: current.settings.militaryPayDeductionTotal,
+        separationMonthMilitaryPay: current.settings.separationMonthMilitaryPay,
         finalMilitaryPay: current.settings.finalMilitaryPay,
         finalMilitaryPayMonth: current.settings.finalMilitaryPayMonth,
-        schoolCUs: current.settings.schoolCUs,
         essentialExpenseTarget: current.settings.essentialExpenseTarget,
         normalLifestyleTarget: current.settings.normalLifestyleTarget,
         idealSavingsTarget: current.settings.idealSavingsTarget,
       },
     }));
+  };
+
+  const resetPlanner = () => {
+    setPlannerState(getDefaultPlannerState());
+  };
+
+  const clearSavedData = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(PLANNER_STORAGE_KEY);
+    }
+
+    setPlannerState(getDefaultPlannerState());
+  };
+
+  const printPlan = () => {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
   };
 
   return (
@@ -1153,14 +1148,14 @@ function App() {
         {modelCue}
       </div>
 
-      <Header summary={summary} />
+      <Header summary={summary} settings={settings} />
 
       <section className="metric-grid" aria-label="Planner summary">
         <MetricCard
           icon={<ShieldCheck aria-hidden="true" />}
           label="Likely safest path"
-          value="Temporary bridge"
-          detail="Contract income through January, new WGU term at 18+ CUs in February, VA delay planned as normal."
+          value={SCENARIOS[scenarioId].shortLabel}
+          detail={SCENARIOS[scenarioId].recommendation}
         />
         <MetricCard
           icon={<AlertTriangle aria-hidden="true" />}
@@ -1185,7 +1180,7 @@ function App() {
           icon={<PiggyBank aria-hidden="true" />}
           label="Reserve needed after DOS"
           value={<AnimatedNumber value={summary.reserveNeeded} />}
-          detail="Maximum cumulative shortfall against essential expenses from December-July."
+          detail="Maximum cumulative shortfall against essential expenses after the separation month."
         />
         <MetricCard
           icon={<WalletCards aria-hidden="true" />}
@@ -1202,7 +1197,7 @@ function App() {
             <h2 id="scenario-heading">Choose the transition shape</h2>
           </div>
           <span className="model-stamp">
-            Rate check: Aug. 13, 2026
+            Rate check: VA 2026 table
           </span>
         </div>
         <div className="scenario-buttons" role="group" aria-label="Scenario presets">
@@ -1255,7 +1250,10 @@ function App() {
       <ScenarioComparison rows={scenarioRows} selectedScenario={scenarioId} />
       <AssumptionsPanel settings={settings} />
       <ActionPlan />
+      <PrintSavePanel onPrint={printPlan} />
+      <PrivacyPanel onReset={resetPlanner} onClearSavedData={clearSavedData} />
       <SourcePanel />
+      <PrintSummary settings={settings} series={series} summary={summary} workPreview={workPreview} />
     </main>
     </ReducedMotionContext.Provider>
   );
@@ -1263,31 +1261,32 @@ function App() {
 
 type HeaderProps = {
   summary: ReturnType<typeof summarizeSeries>;
+  settings: ModelSettings;
 };
 
-function Header({ summary }: HeaderProps) {
+function Header({ summary, settings }: HeaderProps) {
   return (
     <header className="planner-header">
       <div className="header-copy">
-        <p className="eyebrow">Financial transition planner | San Antonio, TX</p>
-        <h1>Elijah Charo Air Force transition model</h1>
+        <p className="eyebrow">Veteran transition planner | local-only calculator</p>
+        <h1>Veteran transition income model</h1>
         <p>
-          A conservative month-by-month planner for August 2026 through July 2027, centered on
-          the October-February cash-flow danger zone.
+          A month-by-month decision-support planner for comparing civilian work, VA compensation,
+          education benefits, Pell, UCX, expenses, and cash reserve risk.
         </p>
       </div>
       <div className="header-facts" aria-label="Critical facts">
         <div>
           <span>Separation date</span>
-          <strong>Dec. 7, 2026</strong>
+          <strong>{settings.alreadySeparated ? "Already separated" : formatDateLabel(settings.separationDate)}</strong>
         </div>
         <div>
-          <span>New WGU term</span>
-          <strong>Feb. 1, 2027</strong>
+          <span>School / training starts</span>
+          <strong>{formatDateLabel(settings.schoolStartDate)}</strong>
         </div>
         <div>
-          <span>Full-time planning rule</span>
-          <strong>18 CUs</strong>
+          <span>Education load</span>
+          <strong>{getSchoolLoadLabel(settings.schoolLoad)}</strong>
         </div>
         <div>
           <span>Critical window</span>
@@ -1327,12 +1326,24 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
   const controlGridId = React.useId();
   const vaMonthly = getVaMonthly(settings);
   const vaCatchUp = getPotentialBackpay(settings);
-  const recurringVaMonth = getRecurringVaStartLabel(settings.vaStart);
+  const recurringVaMonth = getRecurringVaStartLabel(settings);
   const pellMonthly = getPellMonthly(settings);
   const pellTermAmount = getPellTermAmount(settings);
-  const schoolIsFullTime = settings.schoolCUs >= 18;
-  const mgibMonthly = getMgibMonthly(settings);
-  const mgibDecemberProrated = getDecemberMgibProrated(settings);
+  const schoolLoadLabel = getSchoolLoadLabel(settings.schoolLoad);
+  const educationBenefitLabel = getEducationBenefitLabel(settings.educationBenefit);
+  const educationMonthly = getEducationBenefitMonthly(settings);
+  const firstEducationPayment = getFirstEducationBenefitPayment(settings);
+  const educationIsModeled = educationMonthly > 0 && settings.educationBenefit !== "none" && settings.schoolLoad !== "none";
+  const educationRateWarning = getEducationRateWarning(settings);
+  const monthOptions = getTimelineMonthOptions(settings);
+  const benefitMonthOptions = [
+    { value: "none" as const, label: "No VA in projection" },
+    ...monthOptions,
+  ];
+  const finalPayMonthOptions = [
+    ...monthOptions,
+    { value: "none" as const, label: "Hold out until confirmed" },
+  ];
   const pellEnrollmentLabel =
     PELL_ENROLLMENT_OPTIONS.find((option) => option.value === settings.pellEnrollment)?.label ??
     "No Pell";
@@ -1368,7 +1379,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
         </span>
         <span>
           <strong>School</strong>
-          {settings.schoolCUs} CUs / {pellEnrollmentLabel}
+          {educationBenefitLabel} / {schoolLoadLabel} / {pellEnrollmentLabel}
         </span>
         <span>
           <strong>Work</strong>
@@ -1381,6 +1392,65 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
       </div>
 
       <div className="control-grid" id={controlGridId} hidden={!isExpanded}>
+        <fieldset>
+          <legend>
+            <CalendarDays aria-hidden="true" />
+            Transition
+          </legend>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={settings.alreadySeparated}
+              onChange={(event) => onSettingChange("alreadySeparated", event.target.checked)}
+            />
+            <span>I am already separated</span>
+          </label>
+          <div className="field-pair">
+            <label>
+              <span>Projection starts</span>
+              <input
+                type="month"
+                value={settings.timelineStartMonth}
+                onChange={(event) => onSettingChange("timelineStartMonth", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Separation date</span>
+              <input
+                type="date"
+                value={settings.separationDate}
+                disabled={settings.alreadySeparated}
+                onChange={(event) => onSettingChange("separationDate", event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>Terminal leave starts</span>
+              <input
+                type="date"
+                value={settings.terminalLeaveStartDate}
+                disabled={settings.alreadySeparated}
+                onChange={(event) => onSettingChange("terminalLeaveStartDate", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Active-duty take-home/mo</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.activeDutyMonthly}
+                onChange={(event) => onSettingChange("activeDutyMonthly", Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <p className="field-note">
+            Inputs stay in this browser's local storage. This calculator does not need SSNs,
+            claim numbers, medical details, bank credentials, or account creation.
+          </p>
+        </fieldset>
+
         <fieldset>
           <legend>
             <Landmark aria-hidden="true" />
@@ -1403,7 +1473,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           <SelectControl
             label="VA decision / catch-up month"
             value={settings.vaStart}
-            options={VA_START_OPTIONS}
+            options={benefitMonthOptions}
             onChange={(value) => onSettingChange("vaStart", value)}
           />
           <label className="checkbox-row">
@@ -1424,45 +1494,80 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
                 ? (
                     <>
                       <AnimatedNumber value={vaCatchUp} formatter={formatDetailedMoney} /> catch-up in{" "}
-                      {getVaDecisionMonthLabel(settings.vaStart)}.
+                      {getVaDecisionMonthLabel(settings)}.
                     </>
                   )
                 : "No catch-up cash modeled."}{" "}
-              {recurringVaMonth ? `Regular VA cash starts ${recurringVaMonth}.` : "No VA cash by July."}
+              {recurringVaMonth ? `Regular VA cash starts ${recurringVaMonth}.` : "No VA cash in this projection."}
             </small>
           </div>
           <p className="field-note">
-            Uses 2026 VA rates as a conservative 2027 placeholder. Catch-up assumes January is the
-            first payable month after the December 7 separation.
+            Uses 2026 VA veteran-only rates as a planning table. Catch-up uses the first full
+            month after separation as the first modeled payable month.
           </p>
         </fieldset>
 
         <fieldset>
           <legend>
             <GraduationCap aria-hidden="true" />
-            WGU and aid
+            School and aid
           </legend>
+          <div className="field-pair">
+            <label>
+              <span>School / training starts</span>
+              <input
+                type="date"
+                value={settings.schoolStartDate}
+                onChange={(event) => onSettingChange("schoolStartDate", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>School / training ends</span>
+              <input
+                type="date"
+                value={settings.schoolEndDate}
+                onChange={(event) => onSettingChange("schoolEndDate", event.target.value)}
+              />
+            </label>
+          </div>
+          <SelectControl
+            label="Primary education benefit"
+            value={settings.educationBenefit}
+            options={EDUCATION_BENEFIT_OPTIONS}
+            onChange={(value) => onSettingChange("educationBenefit", value)}
+          />
           <div className="segmented-label">School load</div>
           <div className="segmented-control" role="group" aria-label="School load">
-            {[12, 18, 24].map((units) => (
+            {SCHOOL_LOAD_OPTIONS.map((option) => (
               <button
                 type="button"
-                key={units}
-                aria-pressed={settings.schoolCUs === units}
-                onClick={() => onSettingChange("schoolCUs", units)}
+                key={option.value}
+                aria-pressed={settings.schoolLoad === option.value}
+                onClick={() => onSettingChange("schoolLoad", option.value)}
               >
-                {units} CUs
+                {option.label}
               </button>
             ))}
           </div>
           <label>
-            <span>MGIB monthly rate</span>
+            <span>Term tuition / out-of-pocket reserve</span>
+            <input
+              type="number"
+              min={0}
+              step={50}
+              value={settings.schoolTuition}
+              onChange={(event) => onSettingChange("schoolTuition", Number(event.target.value))}
+            />
+          </label>
+          <label>
+            <span>{getEducationRateInputLabel(settings.educationBenefit)}</span>
             <input
               type="number"
               min={0}
               step={25}
-              value={settings.mgibMonthlyRate}
-              onChange={(event) => onSettingChange("mgibMonthlyRate", Number(event.target.value))}
+              disabled={settings.educationBenefit === "none"}
+              value={settings.educationMonthlyRate}
+              onChange={(event) => onSettingChange("educationMonthlyRate", Number(event.target.value))}
             />
           </label>
           <SelectControl
@@ -1477,25 +1582,33 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             options={PELL_ENROLLMENT_OPTIONS}
             onChange={(value) => onSettingChange("pellEnrollment", value)}
           />
+          <SelectControl
+            label="Pell disbursement month"
+            value={settings.pellDisbursementMonth}
+            options={monthOptions}
+            onChange={(value) => onSettingChange("pellDisbursementMonth", value)}
+          />
           <div className="inline-result">
-            <span>MGIB and Pell posture</span>
+            <span>Education and Pell posture</span>
             <strong>
-              {schoolIsFullTime ? (
+              {educationIsModeled ? (
                 <>
-                  <AnimatedNumber value={mgibMonthly} suffix="/mo" /> MGIB
+                  <AnimatedNumber value={educationMonthly} suffix="/mo" /> {educationBenefitLabel}
                 </>
               ) : (
-                "MGIB full-time not modeled"
+                "No monthly education benefit modeled"
               )}
             </strong>
             <small>
-              {schoolIsFullTime ? (
+              {educationIsModeled ? (
                 <>
-                  Jan. 1 models a Dec. 8-31 prorated MGIB deposit of{" "}
-                  <AnimatedNumber value={mgibDecemberProrated} />; full MGIB deposits start Feb. 1.
+                  First modeled {educationBenefitLabel} deposit is{" "}
+                  <AnimatedNumber value={firstEducationPayment} /> based on the selected start date and cash timing.
                 </>
+              ) : settings.educationBenefit === "none" ? (
+                "Select one primary education benefit if you want to model monthly school-related cash."
               ) : (
-                "MGIB is held at zero until the model is set to 18+ CUs."
+                "Set an enrollment load and monthly planning amount before this benefit is modeled."
               )}{" "}
               Pell is separate: <AnimatedNumber value={pellTermAmount} suffix="/term" />{" "}
               {settings.planningMode === "cashTiming"
@@ -1508,9 +1621,11 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </small>
           </div>
           <p className="field-note">
-            MGIB defaults to the 2025-26 full-time placeholder. Cash timing assumes current
-            school participation creates a Jan. 1 prorated payment for Dec. 8-31, then full
-            monthly payments from the Feb. 1 term forward.
+            Model one primary education benefit at a time. MGIB uses the current full-time
+            VA rate as an editable planning value; Post-9/11 and VR&E use manual monthly
+            planning amounts until their fact-specific calculations are added. Pell remains
+            separate from GI Bill assumptions and can be viewed as cash timing or budget equivalent.
+            {educationRateWarning ? ` ${educationRateWarning}` : ""}
           </p>
         </fieldset>
 
@@ -1524,6 +1639,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             value={settings.workType}
             options={WORK_OPTIONS}
             onChange={(value) => onSettingChange("workType", value)}
+          />
+          <SelectControl
+            label="Work starts"
+            value={settings.workStartMonth}
+            options={monthOptions}
+            onChange={(value) => onSettingChange("workStartMonth", value)}
           />
           <div className="segmented-label">Civilian pay basis</div>
           <div className="segmented-control two-up" role="group" aria-label="Civilian pay basis">
@@ -1587,7 +1708,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             <SelectControl
               label="Contract ends"
               value={settings.contractEnd}
-              options={CONTRACT_END_OPTIONS}
+              options={monthOptions}
               onChange={(value) => onSettingChange("contractEnd", value)}
             />
           ) : null}
@@ -1605,6 +1726,26 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               onChange={(value) => onSettingChange("filingStatus", value)}
             />
           </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={settings.useManualTakeHome}
+              onChange={(event) => onSettingChange("useManualTakeHome", event.target.checked)}
+            />
+            <span>Use expected monthly take-home override</span>
+          </label>
+          {settings.useManualTakeHome ? (
+            <label>
+              <span>Expected monthly take-home</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={settings.manualMonthlyTakeHome}
+                onChange={(event) => onSettingChange("manualMonthlyTakeHome", Number(event.target.value))}
+              />
+            </label>
+          ) : null}
           <div className="field-pair">
             <label>
               <span>Pre-tax deductions/mo</span>
@@ -1645,7 +1786,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             />
           </label>
           <div className="inline-result">
-            <span>Texas / San Antonio preview</span>
+            <span>Estimated take-home preview</span>
             <strong>
               {workPreview.monthlyGross > 0
                 ? (
@@ -1664,8 +1805,8 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             ) : null}
           </div>
           <p className="field-note">
-            Uses 2026 federal brackets plus FICA or self-employment tax. Texas/San Antonio is modeled
-            with no state or local wage income tax.
+            Uses 2026 federal brackets plus FICA or self-employment tax. State income tax is not
+            modeled in this first local pass; use the take-home override once available if you know the actual paycheck.
           </p>
         </fieldset>
 
@@ -1750,14 +1891,14 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           </div>
           <div className="field-pair">
             <label>
-              <span>Dec. 1 paycheck</span>
+              <span>Separation-month military pay</span>
               <input
                 type="number"
                 min={0}
                 step={50}
-                value={settings.decemberFirstPaycheck}
+                value={settings.separationMonthMilitaryPay}
                 onChange={(event) =>
-                  onSettingChange("decemberFirstPaycheck", Number(event.target.value))
+                  onSettingChange("separationMonthMilitaryPay", Number(event.target.value))
                 }
               />
             </label>
@@ -1775,18 +1916,18 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           <SelectControl
             label="Final pay timing"
             value={settings.finalMilitaryPayMonth}
-            options={FINAL_PAY_MONTH_OPTIONS}
+            options={finalPayMonthOptions}
             onChange={(value) => onSettingChange("finalMilitaryPayMonth", value)}
           />
           <label>
-            <span>Temporary DFAS deductions across next 2 checks</span>
+            <span>Known military-pay deductions across next 2 checks</span>
             <input
               type="number"
               min={0}
               step={50}
-              value={settings.dfasDeductionTotal}
+              value={settings.militaryPayDeductionTotal}
               onChange={(event) =>
-                onSettingChange("dfasDeductionTotal", Number(event.target.value))
+                onSettingChange("militaryPayDeductionTotal", Number(event.target.value))
               }
             />
           </label>
@@ -1799,13 +1940,13 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               />
             </strong>
             <small>
-              Cash view keeps term Pell and WGU tuition as February events; budget view smooths
+              Cash view keeps term Pell and tuition as deposit/start-month events; budget view smooths
               them across the term.
             </small>
           </div>
           <p className="field-note">
-            UCX caps at the Texas maximum of {formatMoney(UCX_WEEKLY_MAX)}/week before the 10%
-            federal tax holdback. Eligibility is not assumed.
+            UCX uses a manual weekly planning amount and a simple federal tax holdback. Eligibility
+            and state-specific reductions are not determined by this calculator.
           </p>
         </fieldset>
       </div>
@@ -1937,9 +2078,11 @@ function IncomeLayerChart({
       </div>
 
       <div className="income-chart" role="img" aria-label="Stacked monthly income chart">
-        {series.map((month) => (
+        {series.map((month, index) => (
           <div
-            className={`stack-column${hoveredMonth === month.id ? " is-month-focused" : ""}`}
+            className={`stack-column${index === 0 ? " is-chart-edge-start" : ""}${
+              index === series.length - 1 ? " is-chart-edge-end" : ""
+            }${hoveredMonth === month.id ? " is-month-focused" : ""}`}
             key={month.id}
             onPointerEnter={() => onMonthFocus(month.id)}
             onPointerLeave={() => onMonthFocus(null)}
@@ -2001,13 +2144,13 @@ function IncomeLayerChart({
         <span>Essential expenses: {formatMoney(targets.essential)}/mo</span>
         <span>Normal lifestyle: {formatMoney(targets.normal)}/mo</span>
         <span>
-          WGU tuition:{" "}
+          Tuition reserve:{" "}
           {settings.planningMode === "cashTiming"
-            ? `${formatMoney(WGU_TERM_TUITION)} term event`
-            : `${formatMoney(WGU_TUITION_MONTHLY)}/mo reserve`}
+            ? `${formatMoney(settings.schoolTuition)} start-month event`
+            : `${formatMoney(settings.schoolTuition / getSchoolTermMonths(settings))}/mo reserve`}
         </span>
         <span>
-          MGIB: Jan. 1 prorated Dec. 8-31, then full monthly from Feb. 1.
+          Education benefit: cash timing deposits the prior modeled school month; budget view spreads earned value.
         </span>
         <span>VA catch-up is one-time cash, not recurring monthly income.</span>
       </div>
@@ -2094,14 +2237,14 @@ function MasterTimeline({
       <div className="section-heading">
         <div>
           <p className="eyebrow">Master timeline</p>
-          <h2 id="timeline-heading">August 2026 through July 2027</h2>
+          <h2 id="timeline-heading">{getTimelineLabel(series)}</h2>
         </div>
       </div>
       <div className="timeline-wrap">
         <div className="timeline-grid" role="table" aria-label="Transition timeline">
           <div className="timeline-header" role="row">
             <span role="columnheader">Layer</span>
-            {MONTHS.map((month) => (
+            {series.map((month) => (
               <span
                 className={hoveredMonth === month.id ? "is-month-focused" : ""}
                 role="columnheader"
@@ -2170,7 +2313,7 @@ function ScenarioComparison({
           <thead>
             <tr>
               <th>Path</th>
-              <th>Avg Dec-Jul</th>
+              <th>Avg after separation</th>
               <th>Lowest month</th>
               <th>Reserve need</th>
               <th>Danger months</th>
@@ -2215,13 +2358,14 @@ function ScenarioComparison({
 }
 
 function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
-  const fullTimeStatus =
-    settings.schoolCUs >= 18
-      ? "18+ CUs selected; MGIB full-time amount is modeled after the Dec. 8-31 prorated start."
-      : "Under 18 CUs; MGIB full-time amount is not modeled.";
+  const educationBenefitLabel = getEducationBenefitLabel(settings.educationBenefit);
+  const educationStatus =
+    settings.educationBenefit === "none"
+      ? "No monthly education benefit is modeled."
+      : `${educationBenefitLabel} is modeled only as the selected primary education benefit for this period.`;
   const planningModeText =
     settings.planningMode === "cashTiming"
-      ? "Cash timing mode uses deposit events for December DFAS cash, Pell, tuition, the Jan. 1 MGIB prorate, and full MGIB from Feb. 1 forward."
+      ? "Cash timing mode uses selected deposit/start months for final pay, Pell, tuition, education benefits, and VA catch-up."
       : "Budget-equivalent mode smooths school aid and tuition across the term.";
 
   return (
@@ -2239,11 +2383,11 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
             Confirmed / strong facts
           </h3>
           <ul>
-            <li>DOS is December 7, 2026.</li>
-            <li>You are already in school; the next WGU term is planned for February 1, 2027 through late July 2027.</li>
-            <li>Normal active-duty take-home benchmark is about {formatMoney(ACTIVE_DUTY_MONTHLY)}/mo.</li>
-            <li>WGU SCO email says 18 CUs for full-time planning status.</li>
-            <li>Terminal-leave civilian work is permitted in your situation.</li>
+            <li>Projection starts {formatMonthLabel(settings.timelineStartMonth)} and spans 12 months.</li>
+            <li>Separation status is user-entered: {settings.alreadySeparated ? "already separated" : formatDateLabel(settings.separationDate)}.</li>
+            <li>School/training period is user-entered: {formatDateLabel(settings.schoolStartDate)} through {formatDateLabel(settings.schoolEndDate)}.</li>
+            <li>Inputs are stored locally in this browser unless a future feature explicitly states otherwise.</li>
+            <li>VA, education benefit, Pell, tax, and UCX figures are planning estimates, not eligibility decisions.</li>
           </ul>
         </article>
         <article>
@@ -2252,15 +2396,18 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
             Working assumptions
           </h3>
           <ul>
-            <li>MGIB uses editable {formatMoney(settings.mgibMonthlyRate)}/mo until the future 2026-27 rate is verified.</li>
-            <li>{fullTimeStatus}</li>
-            <li>Cash timing models a Jan. 1 MGIB deposit prorated for Dec. 8-31 enrollment proof, then full monthly MGIB deposits from Feb. 1 forward.</li>
-            <li>Pell is independent from the 18-CU MGIB assumption and follows the selected Pell enrollment status.</li>
+            <li>
+              {educationBenefitLabel} uses editable {formatMoney(settings.educationMonthlyRate)}/mo
+              when a monthly education benefit is modeled.
+            </li>
+            <li>{educationStatus}</li>
+            <li>Cash timing models the selected education benefit as paid after the modeled school month; budget mode models the earned monthly value.</li>
+            <li>Pell is independent from GI Bill or VR&E assumptions and follows the selected Pell enrollment status.</li>
             <li>{planningModeText}</li>
-            <li>Civilian work uses a Texas/San Antonio payroll estimate: federal tax plus FICA or self-employment tax, with no Texas state or local wage income tax modeled.</li>
-            <li>VA disability and SMC-K amounts use the 2026 table as a conservative placeholder for 2027 cash.</li>
+            <li>Civilian work uses a federal tax plus FICA or self-employment estimate; state income tax is not modeled yet.</li>
+            <li>VA disability and SMC-K amounts use the 2026 veteran-only table as a planning reference.</li>
             <li>VA catch-up is modeled as a one-time decision-month deposit; regular VA cash starts the following month because compensation is paid in arrears.</li>
-            <li>December military cash separates the Dec. 1 paycheck from final partial military pay and its selected timing.</li>
+            <li>Military cash separates active-duty monthly take-home, separation-month pay, and final-pay timing.</li>
           </ul>
         </article>
         <article>
@@ -2270,10 +2417,10 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
           </h3>
           <ul>
             <li>Final VA rating, SMC-K award, and first cash month.</li>
-            <li>BDD processing speed and any delayed evidence/exam issues.</li>
-            <li>Actual UCX approval, weekly amount, and WGU compatibility.</li>
-            <li>Professional-judgment approval and final Pell amount.</li>
-            <li>Exact debt minimums, DFAS deductions, and final-pay timing.</li>
+            <li>Claim processing speed and any delayed evidence or exam issues.</li>
+            <li>Actual UCX approval, weekly amount, and school compatibility.</li>
+            <li>Professional-judgment approval, enrollment intensity, and final Pell amount.</li>
+            <li>Exact debt minimums, military-pay deductions, and final-pay timing.</li>
           </ul>
         </article>
         <article>
@@ -2282,10 +2429,10 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
             Verify before relying
           </h3>
           <ul>
-            <li>VA MGIB rate for October 1, 2026 to September 30, 2027.</li>
-            <li>WGU MGIB certification rules for your exact program and 18 CU load.</li>
-            <li>2027-28 Pell maximum if any term/payment period crosses that award year.</li>
-            <li>TWC treatment of school enrollment, part-time work, and contract end facts.</li>
+            <li>Education-benefit rate, housing allowance, or subsistence estimate for the exact enrollment period being modeled.</li>
+            <li>School certification rules for the user's exact program and course load.</li>
+            <li>Pell maximum and school-calculated award for the applicable award year.</li>
+            <li>State workforce-agency treatment of school enrollment, part-time work, and contract end facts.</li>
             <li>Whether VA backpay timing and effective date match your claim details.</li>
           </ul>
         </article>
@@ -2300,7 +2447,7 @@ function ActionPlan() {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Action plan</p>
-          <h2 id="action-heading">Concrete moves through February 2027</h2>
+          <h2 id="action-heading">Transition planning checklist</h2>
         </div>
       </div>
       <div className="action-list">
@@ -2322,26 +2469,273 @@ function ActionPlan() {
   );
 }
 
+function PrintSavePanel({ onPrint }: { onPrint: () => void }) {
+  return (
+    <section className="print-panel" aria-labelledby="print-heading">
+      <div>
+        <p className="eyebrow">Plan output</p>
+        <h2 id="print-heading">Print / Save Plan</h2>
+        <p>
+          Create a printer-friendly estimate with selected assumptions, monthly projection,
+          risk months, uncertainties, and official-source references.
+        </p>
+      </div>
+      <div className="privacy-actions">
+        <button type="button" onClick={onPrint}>
+          <FileCheck2 aria-hidden="true" />
+          Print / Save Plan
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PrintSummary({
+  settings,
+  series,
+  summary,
+  workPreview,
+}: {
+  settings: ModelSettings;
+  series: MonthModel[];
+  summary: ReturnType<typeof summarizeSeries>;
+  workPreview: ReturnType<typeof getWorkPreview>;
+}) {
+  const targets = getExpenseTargets(settings);
+  const generatedDate = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
+  const riskMonths = series.filter((month) => month.status === "red");
+
+  return (
+    <section className="print-summary" aria-label="Printable veteran transition estimate">
+      <header>
+        <p>Generated {generatedDate}</p>
+        <h1>Veteran Transition Estimate</h1>
+        <p>
+          Modeled period: {summary.timelineLabel}. This is a planning estimate and does not determine
+          eligibility or official benefit entitlement.
+        </p>
+      </header>
+
+      <section>
+        <h2>Selected Assumptions</h2>
+        <dl>
+          <div>
+            <dt>Separation</dt>
+            <dd>{settings.alreadySeparated ? "Already separated" : formatDateLabel(settings.separationDate)}</dd>
+          </div>
+          <div>
+            <dt>VA</dt>
+            <dd>
+              {settings.rating}%{settings.smcK ? " + SMC-K" : ""}; decision/catch-up{" "}
+              {getVaDecisionMonthLabel(settings)}
+            </dd>
+          </div>
+          <div>
+            <dt>Education</dt>
+            <dd>
+              {getEducationBenefitLabel(settings.educationBenefit)} at{" "}
+              {formatMoney(getEducationBenefitMonthly(settings))}/mo; {getSchoolLoadLabel(settings.schoolLoad)}
+            </dd>
+          </div>
+          <div>
+            <dt>Pell</dt>
+            <dd>
+              {formatMoney(getPellTermAmount(settings))}/term;{" "}
+              {settings.planningMode === "cashTiming" ? "cash timing" : "budget equivalent"}
+            </dd>
+          </div>
+          <div>
+            <dt>Civilian work</dt>
+            <dd>
+              {WORK_OPTIONS.find((option) => option.value === settings.workType)?.label ?? "Not modeled"};{" "}
+              {formatMoney(workPreview.monthlyNet)}/mo estimated take-home
+            </dd>
+          </div>
+          <div>
+            <dt>Expense floor</dt>
+            <dd>
+              Essential {formatMoney(targets.essential)}/mo; normal {formatMoney(targets.normal)}/mo
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Monthly Projection</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Military</th>
+              <th>Civilian</th>
+              <th>VA</th>
+              <th>VA catch-up</th>
+              <th>Education</th>
+              <th>Pell</th>
+              <th>UCX</th>
+              <th>After tuition</th>
+              <th>Vs floor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {series.map((month) => (
+              <tr key={month.id}>
+                <td>{month.label}</td>
+                <td>{formatMoney(month.streams.military)}</td>
+                <td>{formatMoney(month.streams.civilian)}</td>
+                <td>{formatMoney(month.streams.va)}</td>
+                <td>{formatMoney(month.streams.vaBackpay)}</td>
+                <td>{formatMoney(month.streams.education)}</td>
+                <td>{formatMoney(month.streams.pell)}</td>
+                <td>{formatMoney(month.streams.ucx)}</td>
+                <td>{formatMoney(month.effective)}</td>
+                <td>{formatMoney(month.gapToFloor)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Risk Notes</h2>
+        <ul>
+          <li>Lowest projected month: {summary.lowestMonth.label} at {formatMoney(summary.lowestMonth.effective)} after tuition reserve.</li>
+          <li>Reserve recommended after separation: {formatMoney(summary.reserveNeeded)}.</li>
+          <li>
+            Months below essential expenses:{" "}
+            {riskMonths.length > 0 ? riskMonths.map((month) => month.label).join(", ") : "None in this projection"}.
+          </li>
+          <li>VA catch-up, Pell disbursement, and final military pay should be treated as one-time cash where modeled.</li>
+          <li>{getEducationRateWarning(settings) ?? "Current selected education-benefit rate is a user-controlled planning input."}</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Official Source References</h2>
+        <ul>
+          {SOURCE_LINKS.map((source) => (
+            <li key={source.href}>{source.label}: {source.href}</li>
+          ))}
+        </ul>
+      </section>
+    </section>
+  );
+}
+
+function PrivacyPanel({
+  onReset,
+  onClearSavedData,
+}: {
+  onReset: () => void;
+  onClearSavedData: () => void;
+}) {
+  return (
+    <section className="privacy-panel" aria-labelledby="privacy-heading">
+      <div>
+        <p className="eyebrow">Privacy</p>
+        <h2 id="privacy-heading">Local-only calculator state</h2>
+        <p>
+          Calculator inputs are stored locally in your browser unless a future feature explicitly
+          states otherwise. This version does not require an account or send financial inputs to a backend.
+        </p>
+      </div>
+      <div className="privacy-actions">
+        <button type="button" onClick={onReset}>
+          Reset calculator
+        </button>
+        <button type="button" onClick={onClearSavedData}>
+          Clear saved data
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function SourcePanel() {
   return (
     <footer className="source-panel">
       <div>
-        <p className="eyebrow">Source posture</p>
+        <p className="eyebrow">Rates & sources</p>
         <h2>Planning model, not an official eligibility decision</h2>
         <p>
-          Official rates are separated from working assumptions. VA, WGU, TWC, and Federal Student
-          Aid decisions can change the real outcome.
+          Official rates are separated from working assumptions. VA, Federal Student Aid, schools,
+          state workforce agencies, and tax authorities can change the real outcome.
         </p>
       </div>
-      <div className="source-links">
-        {SOURCE_LINKS.map((source) => (
-          <a href={source.href} target="_blank" rel="noreferrer" key={source.href}>
-            {source.label}
-          </a>
-        ))}
+      <div className="source-stack">
+        <div className="rate-source-grid">
+          {BENEFIT_RATE_DATASETS.map((dataset) => (
+            <article key={dataset.program}>
+              <span>{dataset.program}</span>
+              <strong>{dataset.label}</strong>
+              <dl>
+                <div>
+                  <dt>Applies</dt>
+                  <dd>{formatRatePeriod(dataset.effectiveFrom, dataset.effectiveThrough)}</dd>
+                </div>
+                <div>
+                  <dt>Verified</dt>
+                  <dd>{formatSourceDate(dataset.verifiedAt)}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{formatRateStatus(dataset.status)}</dd>
+                </div>
+              </dl>
+              <p>{dataset.note}</p>
+              <a href={dataset.sourceUrl} target="_blank" rel="noreferrer">
+                {dataset.sourceLabel}
+              </a>
+            </article>
+          ))}
+        </div>
+        <div className="source-links" aria-label="Additional planning sources">
+          {SOURCE_LINKS.map((source) => (
+            <a href={source.href} target="_blank" rel="noreferrer" key={source.href}>
+              {source.label}
+            </a>
+          ))}
+        </div>
       </div>
     </footer>
   );
+}
+
+function formatRatePeriod(effectiveFrom: string, effectiveThrough?: string) {
+  if (effectiveFrom === "manual") {
+    return "Manual input";
+  }
+
+  return effectiveThrough
+    ? `${formatSourceDate(effectiveFrom)} - ${formatSourceDate(effectiveThrough)}`
+    : `${formatSourceDate(effectiveFrom)} onward`;
+}
+
+function formatSourceDate(dateInput: string) {
+  const parsed = parseDateInput(dateInput);
+  if (!parsed) {
+    return dateInput;
+  }
+
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day)),
+  );
+}
+
+function formatRateStatus(status: (typeof BENEFIT_RATE_DATASETS)[number]["status"]) {
+  switch (status) {
+    case "verified":
+      return "Verified";
+    case "manual-required":
+      return "Manual input";
+    case "planning-placeholder":
+    default:
+      return "Planning placeholder";
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -2353,19 +2747,23 @@ function isScenarioId(value: unknown): value is ScenarioId {
 }
 
 function isRating(value: unknown): value is Rating {
-  return value === 80 || value === 90 || value === 100;
+  return (
+    value === 0 ||
+    value === 10 ||
+    value === 20 ||
+    value === 30 ||
+    value === 40 ||
+    value === 50 ||
+    value === 60 ||
+    value === 70 ||
+    value === 80 ||
+    value === 90 ||
+    value === 100
+  );
 }
 
 function isVaStart(value: unknown): value is VaStart {
-  return (
-    value === "2027-01" ||
-    value === "2027-02" ||
-    value === "2027-03" ||
-    value === "2027-04" ||
-    value === "2027-05" ||
-    value === "2027-06" ||
-    value === "none"
-  );
+  return value === "none" || isMonthId(value);
 }
 
 function isWorkType(value: unknown): value is WorkType {
@@ -2373,7 +2771,7 @@ function isWorkType(value: unknown): value is WorkType {
 }
 
 function isContractEnd(value: unknown): value is ContractEnd {
-  return value === "2026-12" || value === "2027-01" || value === "2027-02" || value === "2027-03";
+  return isMonthId(value);
 }
 
 function isPayMode(value: unknown): value is PayMode {
@@ -2397,7 +2795,7 @@ function isUcxMode(value: unknown): value is UcxMode {
 }
 
 function isFinalPayMonth(value: unknown): value is FinalPayMonth {
-  return value === "2026-12" || value === "2027-01" || value === "none";
+  return value === "none" || isMonthId(value);
 }
 
 function isPellCaseId(value: unknown): value is PellCaseId {
@@ -2406,6 +2804,14 @@ function isPellCaseId(value: unknown): value is PellCaseId {
 
 function isPellEnrollment(value: unknown): value is PellEnrollment {
   return value === "none" || value === "half" || value === "threeQuarter" || value === "full";
+}
+
+function isSchoolLoad(value: unknown): value is SchoolLoad {
+  return value === "none" || value === "half" || value === "threeQuarter" || value === "full";
+}
+
+function isEducationBenefit(value: unknown): value is EducationBenefit {
+  return value === "none" || value === "mgib" || value === "post911" || value === "vre";
 }
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number) {
@@ -2417,14 +2823,14 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
 }
 
 function calculateSeries(settings: ModelSettings): MonthModel[] {
-  return MONTHS.map((month) => {
+  return getTimelineMonths(settings).map((month) => {
     const streams: Record<IncomeKey, number> = {
       military: getMilitaryPay(month.id, settings),
       civilian: getCivilianPay(month.id, settings),
       ucx: getUcxPay(month.id, settings),
       vaBackpay: getVaBackpay(month.id, settings),
       va: getVaPay(month.id, settings),
-      mgib: getMgibPay(month.id, settings),
+      education: getEducationBenefitPay(month.id, settings),
       pell: getPellPay(month.id, settings),
     };
 
@@ -2447,11 +2853,12 @@ function calculateSeries(settings: ModelSettings): MonthModel[] {
 }
 
 function summarizeSeries(series: MonthModel[], settings: ModelSettings) {
-  const focusMonths = series.filter((month) => getMonthIndex(month.id) >= getMonthIndex("2026-10"));
-  const postDosMonths = series.filter((month) => getMonthIndex(month.id) >= getMonthIndex("2026-12"));
+  const separationMonth = toMonthId(settings.separationDate);
+  const focusMonths = series;
+  const postDosMonths = getPostSeparationMonths(series, settings);
   const criticalMonths = series.filter((month) => {
     const index = getMonthIndex(month.id);
-    return index >= getMonthIndex("2026-10") && index <= getMonthIndex("2027-02");
+    return index >= getMonthIndex(addMonths(separationMonth, -2)) && index <= getMonthIndex(addMonths(separationMonth, 2));
   });
   const lowestMonth = focusMonths.reduce((lowest, month) =>
     month.effective < lowest.effective ? month : lowest,
@@ -2469,6 +2876,7 @@ function summarizeSeries(series: MonthModel[], settings: ModelSettings) {
     reserveNeeded,
     potentialBackpay,
     criticalRiskText,
+    timelineLabel: getTimelineLabel(series),
   };
 }
 
@@ -2477,6 +2885,15 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
     const settings: ModelSettings = {
       ...scenario.settings,
       planningMode: baseSettings.planningMode,
+      timelineStartMonth: baseSettings.timelineStartMonth,
+      alreadySeparated: baseSettings.alreadySeparated,
+      separationDate: baseSettings.separationDate,
+      terminalLeaveStartDate: baseSettings.terminalLeaveStartDate,
+      schoolStartDate: baseSettings.schoolStartDate,
+      schoolEndDate: baseSettings.schoolEndDate,
+      workStartMonth: baseSettings.workStartMonth,
+      pellDisbursementMonth: baseSettings.pellDisbursementMonth,
+      activeDutyMonthly: baseSettings.activeDutyMonthly,
       rating: baseSettings.rating,
       smcK: baseSettings.smcK,
       payMode: baseSettings.payMode,
@@ -2486,17 +2903,21 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
       partTimeHours: baseSettings.partTimeHours,
       payrollType: baseSettings.payrollType,
       filingStatus: baseSettings.filingStatus,
+      useManualTakeHome: baseSettings.useManualTakeHome,
+      manualMonthlyTakeHome: baseSettings.manualMonthlyTakeHome,
       pretaxMonthlyDeductions: baseSettings.pretaxMonthlyDeductions,
       posttaxMonthlyDeductions: baseSettings.posttaxMonthlyDeductions,
       extraTaxReservePercent: baseSettings.extraTaxReservePercent,
       includeVaBackpay: baseSettings.includeVaBackpay,
       ucxWeeklyBenefit: baseSettings.ucxWeeklyBenefit,
+      educationBenefit: baseSettings.educationBenefit,
+      schoolLoad: baseSettings.schoolLoad,
+      educationMonthlyRate: baseSettings.educationMonthlyRate,
       pellCase: baseSettings.pellCase,
       pellEnrollment: baseSettings.pellEnrollment,
-      schoolCUs: baseSettings.schoolCUs,
-      mgibMonthlyRate: baseSettings.mgibMonthlyRate,
-      dfasDeductionTotal: baseSettings.dfasDeductionTotal,
-      decemberFirstPaycheck: baseSettings.decemberFirstPaycheck,
+      schoolTuition: baseSettings.schoolTuition,
+      militaryPayDeductionTotal: baseSettings.militaryPayDeductionTotal,
+      separationMonthMilitaryPay: baseSettings.separationMonthMilitaryPay,
       finalMilitaryPay: baseSettings.finalMilitaryPay,
       finalMilitaryPayMonth: baseSettings.finalMilitaryPayMonth,
       essentialExpenseTarget: baseSettings.essentialExpenseTarget,
@@ -2504,7 +2925,7 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
       idealSavingsTarget: baseSettings.idealSavingsTarget,
     };
     const series = calculateSeries(settings);
-    const postDosMonths = series.filter((month) => getMonthIndex(month.id) >= getMonthIndex("2026-12"));
+    const postDosMonths = getPostSeparationMonths(series, settings);
     const average = postDosMonths.reduce((sum, month) => sum + month.effective, 0) / postDosMonths.length;
     const minimum = Math.min(...postDosMonths.map((month) => month.effective));
     const reserveNeeded = getReserveNeeded(postDosMonths, settings);
@@ -2528,20 +2949,27 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
 }
 
 function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
+  const separationMonth = toMonthId(settings.separationDate);
+  const terminalLeaveMonth = toMonthId(settings.terminalLeaveStartDate);
+  const firstPayableVaMonth = getFirstVaPayableMonth(settings);
+
   return [
     {
       label: "Military pay",
       cells: series.map((month) => ({
         monthId: month.id,
-        kind: month.streams.military > 0 ? (month.id === "2026-12" ? "event" : "active") : "empty",
-        label: month.streams.military > 0 ? (month.id === "2026-12" ? "DOS" : "Pay") : "",
+        kind: month.streams.military > 0 ? (month.id === separationMonth ? "event" : "active") : "empty",
+        label: month.streams.military > 0 ? (month.id === separationMonth ? "DOS" : "Pay") : "",
       })),
     },
     {
       label: "Terminal leave",
       cells: series.map((month) => {
         const index = getMonthIndex(month.id);
-        const inLeave = index >= getMonthIndex("2026-10") && index <= getMonthIndex("2026-12");
+        const inLeave =
+          !settings.alreadySeparated &&
+          index >= getMonthIndex(terminalLeaveMonth) &&
+          index <= getMonthIndex(separationMonth);
         return {
           monthId: month.id,
           kind: inLeave ? "active-soft" : "empty",
@@ -2566,43 +2994,31 @@ function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
       })),
     },
     {
-      label: "WGU / MGIB / Pell",
+      label: "School / education aid / Pell",
       cells: series.map((month) => {
-        if (month.id === "2026-12") {
-          return {
-            monthId: month.id,
-            kind: settings.schoolCUs >= 18 ? "active-soft" : "risk",
-            label: settings.schoolCUs >= 18 ? "Dec. 8" : "Verify",
-          };
-        }
-
-        if (month.id === "2027-01") {
-          return {
-            monthId: month.id,
-            kind: settings.schoolCUs >= 18 ? "event" : "risk",
-            label: settings.schoolCUs >= 18
-              ? settings.planningMode === "cashTiming"
-                ? "Prorate"
-                : "MGIB"
-              : "Verify",
-          };
-        }
-
-        if (!isSchoolMonth(month.id)) {
+        if (!isSchoolMonth(month.id, settings) && month.streams.education <= 0 && month.streams.pell <= 0) {
           return { monthId: month.id, kind: "empty", label: "" };
+        }
+
+        if (month.id === toMonthId(settings.schoolStartDate)) {
+          return { monthId: month.id, kind: "event", label: "Start" };
+        }
+
+        if (month.streams.pell > 0 || month.streams.education > 0) {
+          return { monthId: month.id, kind: "active", label: "Aid" };
         }
 
         return {
           monthId: month.id,
-          kind: settings.schoolCUs >= 18 ? "active" : "risk",
-          label: settings.schoolCUs >= 18 ? "18+ CU" : "Verify",
+          kind: settings.schoolLoad !== "none" ? "active-soft" : "risk",
+          label: settings.schoolLoad !== "none" ? "School" : "Verify",
         };
       }),
     },
     {
       label: "VA cash",
       cells: series.map((month) => {
-        const afterJan = getMonthIndex(month.id) >= getMonthIndex("2027-01");
+        const afterFirstPayable = getMonthIndex(month.id) >= getMonthIndex(firstPayableVaMonth);
         const beforeDecision =
           settings.vaStart !== "none" &&
           getMonthIndex(month.id) < getMonthIndex(settings.vaStart);
@@ -2621,8 +3037,8 @@ function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
 
         return {
           monthId: month.id,
-          kind: afterJan && beforeDecision ? "risk" : "empty",
-          label: afterJan && beforeDecision ? "Accrue" : "",
+          kind: afterFirstPayable && beforeDecision ? "risk" : "empty",
+          label: afterFirstPayable && beforeDecision ? "Accrue" : "",
         };
       }),
     },
@@ -2630,29 +3046,43 @@ function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
 }
 
 function getMilitaryPay(monthId: MonthId, settings: ModelSettings) {
-  const deductionPerMonth = Math.max(0, settings.dfasDeductionTotal) / 2;
-
-  if (monthId === "2026-08" || monthId === "2026-09") {
-    return Math.max(0, ACTIVE_DUTY_MONTHLY - deductionPerMonth);
+  if (settings.alreadySeparated) {
+    return settings.planningMode === "cashTiming" && monthId === settings.finalMilitaryPayMonth
+      ? Math.max(0, settings.finalMilitaryPay)
+      : 0;
   }
 
-  if (monthId === "2026-10" || monthId === "2026-11") {
-    return ACTIVE_DUTY_MONTHLY;
+  const deductionPerMonth = Math.max(0, settings.militaryPayDeductionTotal) / 2;
+  const monthIndex = getMonthIndex(monthId);
+  const separationMonth = toMonthId(settings.separationDate);
+  const separationIndex = getMonthIndex(separationMonth);
+  const projectionStartIndex = getMonthIndex(settings.timelineStartMonth);
+  const shouldApplyShortTermDeduction =
+    monthIndex >= projectionStartIndex && monthIndex <= projectionStartIndex + 1;
+  const activeDutyMonthly = Math.max(0, settings.activeDutyMonthly);
+
+  if (monthIndex < separationIndex) {
+    return Math.max(0, activeDutyMonthly - (shouldApplyShortTermDeduction ? deductionPerMonth : 0));
   }
 
-  if (monthId === "2026-12") {
+  if (monthId === separationMonth) {
+    const estimatedSeparationMonthPay =
+      settings.separationMonthMilitaryPay > 0
+        ? Math.max(0, settings.separationMonthMilitaryPay)
+        : activeDutyMonthly * getDateMonthFraction(settings.separationDate);
+
     if (settings.planningMode === "budgetEquivalent") {
-      return Math.max(0, settings.finalMilitaryPay);
+      return estimatedSeparationMonthPay;
     }
 
     return (
-      Math.max(0, settings.decemberFirstPaycheck) +
-      (settings.finalMilitaryPayMonth === "2026-12" ? Math.max(0, settings.finalMilitaryPay) : 0)
+      estimatedSeparationMonthPay +
+      (settings.finalMilitaryPayMonth === separationMonth ? Math.max(0, settings.finalMilitaryPay) : 0)
     );
   }
 
-  if (monthId === "2027-01" && settings.planningMode === "cashTiming") {
-    return settings.finalMilitaryPayMonth === "2027-01" ? Math.max(0, settings.finalMilitaryPay) : 0;
+  if (settings.planningMode === "cashTiming" && settings.finalMilitaryPayMonth === monthId) {
+    return Math.max(0, settings.finalMilitaryPay);
   }
 
   return 0;
@@ -2674,7 +3104,7 @@ function getCivilianWorkFactor(monthId: MonthId, settings: ModelSettings) {
   }
 
   const monthIndex = getMonthIndex(monthId);
-  const startIndex = getMonthIndex("2026-10");
+  const startIndex = getMonthIndex(settings.workStartMonth);
 
   if (monthIndex < startIndex) {
     return 0;
@@ -2684,7 +3114,7 @@ function getCivilianWorkFactor(monthId: MonthId, settings: ModelSettings) {
     return 0;
   }
 
-  return monthId === "2026-10" ? 0.25 : 1;
+  return monthId === settings.workStartMonth ? 0.5 : 1;
 }
 
 function getUcxPay(monthId: MonthId, settings: ModelSettings) {
@@ -2694,7 +3124,7 @@ function getUcxPay(monthId: MonthId, settings: ModelSettings) {
 
   const weeklyBenefit = Math.max(0, Math.min(UCX_WEEKLY_MAX, settings.ucxWeeklyBenefit));
   const monthIndex = getMonthIndex(monthId);
-  const earliestIndex = getMonthIndex("2027-01");
+  const earliestIndex = getMonthIndex(addMonths(toMonthId(settings.separationDate), 1));
 
   if (monthIndex < earliestIndex || settings.workType === "permanent") {
     return 0;
@@ -2729,49 +3159,35 @@ function getVaBackpay(monthId: MonthId, settings: ModelSettings) {
     return 0;
   }
 
-  return getAccruedVaMonths(settings.vaStart) * getVaMonthly(settings);
+  return getAccruedVaMonths(settings) * getVaMonthly(settings);
 }
 
 function getVaMonthly(settings: Pick<ModelSettings, "rating" | "smcK">) {
   return VA_RATES[settings.rating] + (settings.smcK ? SMC_K_RATE : 0);
 }
 
-function getMgibPay(monthId: MonthId, settings: ModelSettings) {
-  if (settings.schoolCUs < 18) {
+function getEducationBenefitPay(monthId: MonthId, settings: ModelSettings) {
+  if (settings.educationBenefit === "none" || settings.schoolLoad === "none") {
     return 0;
   }
 
   if (settings.planningMode === "budgetEquivalent") {
-    if (monthId === "2026-12") {
-      return getDecemberMgibProrated(settings);
-    }
-
-    const monthIndex = getMonthIndex(monthId);
-    return monthIndex >= getMonthIndex("2027-01") && monthIndex <= getMonthIndex("2027-07")
-      ? getMgibMonthly(settings)
-      : 0;
+    return getEducationBenefitMonthly(settings) * getSchoolMonthFactor(monthId, settings);
   }
 
-  if (monthId === "2027-01") {
-    return getDecemberMgibProrated(settings);
-  }
-
-  const monthIndex = getMonthIndex(monthId);
-  return monthIndex >= getMonthIndex("2027-02") && monthIndex <= getMonthIndex("2027-07")
-    ? getMgibMonthly(settings)
-    : 0;
+  return getEducationBenefitMonthly(settings) * getSchoolMonthFactor(addMonths(monthId, -1), settings);
 }
 
 function getPellPay(monthId: MonthId, settings: ModelSettings) {
   if (settings.planningMode === "budgetEquivalent") {
-    return isSchoolMonth(monthId) ? getPellMonthly(settings) : 0;
+    return isSchoolMonth(monthId, settings) ? getPellMonthly(settings) : 0;
   }
 
-  return monthId === "2027-02" ? getPellTermAmount(settings) : 0;
+  return monthId === settings.pellDisbursementMonth ? getPellTermAmount(settings) : 0;
 }
 
-function getPellMonthly(settings: Pick<ModelSettings, "pellCase" | "pellEnrollment">) {
-  return getPellTermAmount(settings) / 6;
+function getPellMonthly(settings: Pick<ModelSettings, "pellCase" | "pellEnrollment" | "schoolStartDate" | "schoolEndDate">) {
+  return getPellTermAmount(settings) / getSchoolTermMonths(settings);
 }
 
 function getPellTermAmount(settings: Pick<ModelSettings, "pellCase" | "pellEnrollment">) {
@@ -2782,24 +3198,80 @@ function getPellEnrollmentFactor(pellEnrollment: PellEnrollment) {
   return PELL_ENROLLMENT_OPTIONS.find((option) => option.value === pellEnrollment)?.factor ?? 1;
 }
 
-function getMgibMonthly(settings: Pick<ModelSettings, "mgibMonthlyRate">) {
-  return Math.max(0, settings.mgibMonthlyRate);
+function getSchoolLoadLabel(schoolLoad: SchoolLoad) {
+  return SCHOOL_LOAD_OPTIONS.find((option) => option.value === schoolLoad)?.label ?? "Not enrolled";
 }
 
-function getDecemberMgibProrated(settings: Pick<ModelSettings, "mgibMonthlyRate">) {
-  return getMgibMonthly(settings) * (MGIB_DECEMBER_DAYS_PAYABLE / 31);
+function getEducationBenefitLabel(educationBenefit: EducationBenefit) {
+  return EDUCATION_BENEFIT_OPTIONS.find((option) => option.value === educationBenefit)?.label ?? "No education benefit";
 }
 
-function getTuitionForMonth(monthId: MonthId, settings: Pick<ModelSettings, "planningMode" | "schoolCUs">) {
-  if (settings.schoolCUs <= 0) {
+function getEducationRateInputLabel(educationBenefit: EducationBenefit) {
+  switch (educationBenefit) {
+    case "mgib":
+      return "MGIB monthly planning rate";
+    case "post911":
+      return "Expected monthly housing allowance";
+    case "vre":
+      return "VR&E monthly planning estimate";
+    case "none":
+    default:
+      return "Monthly education benefit estimate";
+  }
+}
+
+function getEducationRateWarning(settings: Pick<ModelSettings, "educationBenefit" | "schoolStartDate">) {
+  if (settings.educationBenefit === "mgib" && MGIB_ACTIVE_DUTY_RATE_DATASET.effectiveThrough) {
+    const verifiedThrough = toMonthId(MGIB_ACTIVE_DUTY_RATE_DATASET.effectiveThrough);
+    if (getMonthIndex(toMonthId(settings.schoolStartDate)) > getMonthIndex(verifiedThrough)) {
+      return "Future MGIB rate is not yet verified for this school period; the current rate is used as an editable planning placeholder.";
+    }
+  }
+
+  if (settings.educationBenefit === "post911") {
+    return "Post-9/11 housing allowance is manual because location, modality, eligibility percentage, and enrollment affect the real payment.";
+  }
+
+  if (settings.educationBenefit === "vre") {
+    return "VR&E subsistence is manual because eligibility and payment structure are fact-specific.";
+  }
+
+  return null;
+}
+
+function getEducationBenefitMonthly(
+  settings: Pick<ModelSettings, "educationBenefit" | "schoolLoad" | "educationMonthlyRate">,
+) {
+  if (settings.educationBenefit === "none" || settings.schoolLoad === "none") {
     return 0;
   }
 
-  if (settings.planningMode === "budgetEquivalent") {
-    return isSchoolMonth(monthId) ? WGU_TUITION_MONTHLY : 0;
+  return Math.max(0, settings.educationMonthlyRate);
+}
+
+function getFirstEducationBenefitPayment(settings: ModelSettings) {
+  const firstPaymentMonth =
+    settings.planningMode === "cashTiming"
+      ? addMonths(toMonthId(settings.schoolStartDate), 1)
+      : toMonthId(settings.schoolStartDate);
+  return getEducationBenefitPay(firstPaymentMonth, settings);
+}
+
+function getTuitionForMonth(
+  monthId: MonthId,
+  settings: Pick<ModelSettings, "planningMode" | "schoolLoad" | "schoolStartDate" | "schoolEndDate" | "schoolTuition">,
+) {
+  if (settings.schoolLoad === "none") {
+    return 0;
   }
 
-  return monthId === "2027-02" ? WGU_TERM_TUITION : 0;
+  const tuition = Math.max(0, settings.schoolTuition);
+
+  if (settings.planningMode === "budgetEquivalent") {
+    return isSchoolMonth(monthId, settings) ? tuition / getSchoolTermMonths(settings) : 0;
+  }
+
+  return monthId === toMonthId(settings.schoolStartDate) ? tuition : 0;
 }
 
 function getPotentialBackpay(settings: ModelSettings) {
@@ -2807,7 +3279,7 @@ function getPotentialBackpay(settings: ModelSettings) {
     return 0;
   }
 
-  return getAccruedVaMonths(settings.vaStart) * getVaMonthly(settings);
+  return getAccruedVaMonths(settings) * getVaMonthly(settings);
 }
 
 function getReserveNeeded(
@@ -2825,25 +3297,28 @@ function getReserveNeeded(
   return Math.abs(lowestBalance);
 }
 
-function getAccruedVaMonths(vaStart: Exclude<VaStart, "none">) {
-  return Math.max(0, getMonthIndex(vaStart) - getMonthIndex("2027-01"));
+function getAccruedVaMonths(settings: ModelSettings) {
+  if (settings.vaStart === "none") {
+    return 0;
+  }
+
+  return Math.max(0, getMonthIndex(settings.vaStart) - getMonthIndex(getFirstVaPayableMonth(settings)));
 }
 
-function getVaDecisionMonthLabel(vaStart: VaStart) {
-  if (vaStart === "none") {
+function getVaDecisionMonthLabel(settings: ModelSettings) {
+  if (settings.vaStart === "none") {
     return "no selected month";
   }
 
-  return MONTHS.find((month) => month.id === vaStart)?.label ?? vaStart;
+  return formatMonthLabel(settings.vaStart);
 }
 
-function getRecurringVaStartLabel(vaStart: VaStart) {
-  if (vaStart === "none") {
+function getRecurringVaStartLabel(settings: ModelSettings) {
+  if (settings.vaStart === "none") {
     return null;
   }
 
-  const recurringMonth = MONTHS[getMonthIndex(vaStart) + 1];
-  return recurringMonth?.label ?? null;
+  return formatMonthLabel(addMonths(settings.vaStart, 1));
 }
 
 function getWorkPreview(
@@ -2857,6 +3332,8 @@ function getWorkPreview(
     | "partTimeHours"
     | "payrollType"
     | "filingStatus"
+    | "useManualTakeHome"
+    | "manualMonthlyTakeHome"
     | "pretaxMonthlyDeductions"
     | "posttaxMonthlyDeductions"
     | "extraTaxReservePercent"
@@ -2865,13 +3342,21 @@ function getWorkPreview(
   const annualGross = getAnnualGross(settings);
   const monthlyGross = annualGross / 12;
   const weeklyGross = annualGross / 52;
-  const payrollEstimate = estimateTexasTakeHome(annualGross, settings);
+  const payrollEstimate = estimateTakeHome(annualGross, settings);
 
   return {
     weeklyGross,
     monthlyGross,
     annualGross,
     ...payrollEstimate,
+    monthlyNet:
+      settings.useManualTakeHome && annualGross > 0
+        ? Math.max(0, settings.manualMonthlyTakeHome)
+        : payrollEstimate.monthlyNet,
+    netRate:
+      settings.useManualTakeHome && annualGross > 0
+        ? Math.max(0, settings.manualMonthlyTakeHome) / monthlyGross
+        : payrollEstimate.netRate,
   };
 }
 
@@ -2892,7 +3377,7 @@ function getAnnualGross(
   return Math.max(0, settings.hourlyRate) * Math.max(0, weeklyHours) * 52;
 }
 
-function estimateTexasTakeHome(
+function estimateTakeHome(
   annualGross: number,
   settings: Pick<
     ModelSettings,
@@ -3020,13 +3505,194 @@ function getStatus(
   return "red";
 }
 
-function isSchoolMonth(monthId: MonthId) {
-  const index = getMonthIndex(monthId);
-  return index >= getMonthIndex("2027-02") && index <= getMonthIndex("2027-07");
+function getTimelineMonths(settings: Pick<ModelSettings, "timelineStartMonth">) {
+  const startMonth = isMonthId(settings.timelineStartMonth)
+    ? settings.timelineStartMonth
+    : DEFAULT_TIMELINE_START_MONTH;
+  return buildTimelineMonths(startMonth, PROJECTION_MONTH_COUNT);
+}
+
+function getTimelineMonthOptions(settings: Pick<ModelSettings, "timelineStartMonth">) {
+  return getTimelineMonths(settings).map((month) => ({
+    value: month.id,
+    label: month.label,
+  }));
+}
+
+function getPostSeparationMonths(series: MonthModel[], settings: Pick<ModelSettings, "alreadySeparated" | "separationDate">) {
+  if (settings.alreadySeparated) {
+    return series;
+  }
+
+  const separationMonth = toMonthId(settings.separationDate);
+  return series.filter((month) => getMonthIndex(month.id) >= getMonthIndex(separationMonth));
+}
+
+function getFirstVaPayableMonth(settings: Pick<ModelSettings, "alreadySeparated" | "separationDate" | "timelineStartMonth">) {
+  if (settings.alreadySeparated) {
+    return settings.timelineStartMonth;
+  }
+
+  return addMonths(toMonthId(settings.separationDate), 1);
+}
+
+function isSchoolMonth(
+  monthId: MonthId,
+  settings: Pick<ModelSettings, "schoolStartDate" | "schoolEndDate">,
+) {
+  return getSchoolMonthFactor(monthId, settings) > 0;
+}
+
+function getSchoolMonthFactor(
+  monthId: MonthId,
+  settings: Pick<ModelSettings, "schoolStartDate" | "schoolEndDate">,
+) {
+  const startDate = parseDateInput(settings.schoolStartDate);
+  const endDate = parseDateInput(settings.schoolEndDate);
+  const startMonth = toMonthId(settings.schoolStartDate);
+  const endMonth = toMonthId(settings.schoolEndDate);
+  const monthIndex = getMonthIndex(monthId);
+
+  if (!startDate || !endDate || getMonthIndex(endMonth) < getMonthIndex(startMonth)) {
+    return 0;
+  }
+
+  if (monthIndex < getMonthIndex(startMonth) || monthIndex > getMonthIndex(endMonth)) {
+    return 0;
+  }
+
+  const daysInMonth = getDaysInMonth(monthId);
+  let coveredDays = daysInMonth;
+
+  if (monthId === startMonth) {
+    coveredDays -= startDate.day - 1;
+  }
+
+  if (monthId === endMonth) {
+    coveredDays = Math.min(coveredDays, endDate.day);
+  }
+
+  return Math.max(0, Math.min(1, coveredDays / daysInMonth));
+}
+
+function getSchoolTermMonths(settings: Pick<ModelSettings, "schoolStartDate" | "schoolEndDate">) {
+  const startMonth = toMonthId(settings.schoolStartDate);
+  const endMonth = toMonthId(settings.schoolEndDate);
+  return Math.max(1, getMonthIndex(endMonth) - getMonthIndex(startMonth) + 1);
+}
+
+function getDateMonthFraction(dateInput: string) {
+  const parsed = parseDateInput(dateInput);
+  if (!parsed) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, parsed.day / getDaysInMonth(parsed.monthId)));
+}
+
+function buildTimelineMonths(startMonth: MonthId, count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const id = addMonths(startMonth, index);
+    return {
+      id,
+      short: formatMonthShort(id),
+      label: formatMonthLabel(id),
+    };
+  });
+}
+
+function getTimelineLabel(series: MonthModel[]) {
+  const first = series[0];
+  const last = series[series.length - 1];
+  return first && last ? `${first.label} through ${last.label}` : "12-month projection";
+}
+
+function getCurrentMonthId() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function addMonths(monthId: MonthId, offset: number) {
+  const parsed = parseMonthId(monthId) ?? parseMonthId(DEFAULT_TIMELINE_START_MONTH);
+  const date = new Date(Date.UTC(parsed.year, parsed.month - 1 + offset, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function getMonthIndex(monthId: MonthId) {
-  return MONTHS.findIndex((month) => month.id === monthId);
+  const parsed = parseMonthId(monthId) ?? parseMonthId(DEFAULT_TIMELINE_START_MONTH);
+  return parsed.year * 12 + parsed.month - 1;
+}
+
+function toMonthId(dateInput: string) {
+  if (/^\d{4}-\d{2}$/.test(dateInput)) {
+    return dateInput;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    return dateInput.slice(0, 7);
+  }
+
+  return DEFAULT_TIMELINE_START_MONTH;
+}
+
+function isMonthId(value: unknown): value is MonthId {
+  return typeof value === "string" && /^\d{4}-\d{2}$/.test(value);
+}
+
+function isDateInput(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseDateInput(value: string) {
+  if (!isDateInput(value)) {
+    return null;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  return { year, month, day, monthId: `${year}-${String(month).padStart(2, "0")}` };
+}
+
+function parseMonthId(monthId: MonthId) {
+  if (!isMonthId(monthId)) {
+    return { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+  }
+
+  const [year, month] = monthId.split("-").map(Number);
+  return { year, month };
+}
+
+function getDaysInMonth(monthId: MonthId) {
+  const parsed = parseMonthId(monthId);
+  return new Date(Date.UTC(parsed.year, parsed.month, 0)).getUTCDate();
+}
+
+function formatMonthLabel(monthId: MonthId) {
+  const parsed = parseMonthId(monthId);
+  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(parsed.year, parsed.month - 1, 1)),
+  );
+}
+
+function formatMonthShort(monthId: MonthId) {
+  const parsed = parseMonthId(monthId);
+  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(
+    new Date(Date.UTC(parsed.year, parsed.month - 1, 1)),
+  );
+}
+
+function formatDateLabel(dateInput: string) {
+  const parsed = parseDateInput(dateInput);
+  if (!parsed) {
+    return "Not set";
+  }
+
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day)),
+  );
 }
 
 function formatMoney(value: number) {
@@ -3036,5 +3702,16 @@ function formatMoney(value: number) {
 function formatDetailedMoney(value: number) {
   return DETAILED_MONEY_FORMATTER.format(value);
 }
+
+export {
+  BASE_SETTINGS,
+  calculateSeries,
+  getEducationBenefitPay,
+  getPellPay,
+  getPotentialBackpay,
+  getReserveNeeded,
+  getVaMonthly,
+  getWorkPreview,
+};
 
 export default App;

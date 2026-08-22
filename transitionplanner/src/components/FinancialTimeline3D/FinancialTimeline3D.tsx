@@ -200,7 +200,9 @@ export default function FinancialTimeline3D({
             ref={canvasRef}
             className="timeline-3d-canvas"
             role="img"
-            aria-label="Interactive 3D financial timeline from August 2026 through July 2027"
+            aria-label={`Interactive 3D financial timeline from ${series[0]?.label ?? "the first month"} through ${
+              series[series.length - 1]?.label ?? "the final month"
+            }`}
           />
           {rendererStatus === "pending" ? (
             <div className="timeline-3d-canvas-status" role="status">
@@ -330,12 +332,23 @@ function MonthAnalysisPanel({
 }
 
 function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Timeline3DEvent[] {
-  const events: Timeline3DEvent[] = [
-    { id: "terminal-leave", monthId: "2026-10", label: "Leave", kind: "transition" },
-    { id: "separation", monthId: "2026-12", label: "DOS", kind: "transition" },
-    { id: "wgu-current", monthId: "2026-12", label: "Enrolled", kind: "school" },
-    { id: "wgu-new-term", monthId: "2027-02", label: "New term", kind: "school" },
-  ];
+  const eventMonths = new Set(series.map((month) => month.id));
+  const separationMonth = settings.separationDate.slice(0, 7);
+  const terminalLeaveMonth = settings.terminalLeaveStartDate.slice(0, 7);
+  const schoolStartMonth = settings.schoolStartDate.slice(0, 7);
+  const events: Timeline3DEvent[] = [];
+
+  if (!settings.alreadySeparated && eventMonths.has(terminalLeaveMonth)) {
+    events.push({ id: "terminal-leave", monthId: terminalLeaveMonth, label: "Leave", kind: "transition" });
+  }
+
+  if (!settings.alreadySeparated && eventMonths.has(separationMonth)) {
+    events.push({ id: "separation", monthId: separationMonth, label: "DOS", kind: "transition" });
+  }
+
+  if (eventMonths.has(schoolStartMonth)) {
+    events.push({ id: "school-start", monthId: schoolStartMonth, label: "School", kind: "school" });
+  }
 
   const firstWork = series.find((month) => month.streams.civilian > 0);
   if (firstWork) {
@@ -343,7 +356,9 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
   }
 
   if (settings.workType === "contract") {
-    events.push({ id: "contract-end", monthId: settings.contractEnd, label: "Contract end", kind: "work" });
+    if (eventMonths.has(settings.contractEnd)) {
+      events.push({ id: "contract-end", monthId: settings.contractEnd, label: "Contract end", kind: "work" });
+    }
   }
 
   if (settings.vaStart !== "none") {
@@ -369,13 +384,14 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
     events.push({ id: "pell", monthId: firstPell.id, label: "Pell", kind: "school" });
   }
 
-  const firstMgib = series.find((month) => month.streams.mgib > 0);
-  if (firstMgib) {
-    const firstMgibIsProrated = firstMgib.streams.mgib < Math.max(0, settings.mgibMonthlyRate);
+  const firstEducation = series.find((month) => month.streams.education > 0);
+  if (firstEducation) {
+    const educationLabel = getEducationEventLabel(settings.educationBenefit);
+    const firstEducationIsProrated = firstEducation.streams.education < Math.max(0, settings.educationMonthlyRate);
     events.push({
-      id: "mgib",
-      monthId: firstMgib.id,
-      label: firstMgibIsProrated ? "MGIB prorate" : "MGIB",
+      id: "education",
+      monthId: firstEducation.id,
+      label: firstEducationIsProrated ? `${educationLabel} prorate` : educationLabel,
       kind: "school",
     });
   }
@@ -386,6 +402,20 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
   }
 
   return dedupeEvents(events);
+}
+
+function getEducationEventLabel(educationBenefit: ModelSettings["educationBenefit"]) {
+  switch (educationBenefit) {
+    case "mgib":
+      return "MGIB";
+    case "post911":
+      return "Post-9/11";
+    case "vre":
+      return "VR&E";
+    case "none":
+    default:
+      return "Education";
+  }
 }
 
 function dedupeEvents(events: Timeline3DEvent[]) {
