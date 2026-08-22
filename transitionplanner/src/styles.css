@@ -731,6 +731,11 @@ fieldset:focus-within {
   min-width: 0;
 }
 
+.field-pair > label,
+.field-pair > .select-field {
+  min-width: 0;
+}
+
 .compact-fieldset label,
 .compact-fieldset .select-field {
   gap: 5px;
@@ -807,6 +812,8 @@ input[type="date"],
 input[type="month"],
 .themed-select-trigger {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 42px;
   border: 1px solid rgba(126, 214, 246, 0.28);
   border-radius: 6px;
@@ -954,6 +961,7 @@ select {
 
 input[type="date"],
 input[type="month"] {
+  min-inline-size: 0;
   color-scheme: dark;
   background-color: #06111f;
 }
@@ -2695,6 +2703,10 @@ input[type="range"] {
 
   .header-copy h1 {
     font-size: 2.05rem;
+  }
+
+  .field-pair {
+    grid-template-columns: 1fr;
   }
 
   .income-chart {
