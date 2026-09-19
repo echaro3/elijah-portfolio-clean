@@ -35,6 +35,11 @@ p { line-height: 1.6; }
 .icon-button:hover { background: var(--surface-strong); }
 .icon-button svg { width: 17px; height: 17px; }
 .planner-header { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); gap: 60px; align-items: center; padding: 44px 0 36px; }
+.static-header { grid-template-columns: 1fr; }
+.creator-credit { grid-column: 1 / -1; margin: 12px 0 0; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.7; }
+.creator-credit a { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
+.creator-credit a svg { width: 13px; height: 13px; }
+.creator-credit > span { display: block; font-size: 11px; margin-top: 5px; }
 .eyebrow { font-size: 12px; color: var(--muted); font-weight: 500; margin: 0 0 8px; }
 .header-copy h1 { font-size: 36px; line-height: 1.2; max-width: 680px; }
 .header-copy > p:not(.eyebrow) { color: var(--muted); font-size: 14px; max-width: 550px; margin: 14px 0 20px; }

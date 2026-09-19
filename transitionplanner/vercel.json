@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/transitionplanner/social-preview.png",
+      "destination": "/social-preview.png"
+    },
+    {
       "source": "/transitionplanner/assets/:path*",
       "destination": "/assets/:path*"
     },

@@ -1311,15 +1311,7 @@ type HeaderProps = {
 function Header({ summary, settings }: HeaderProps) {
   return (
     <header className="planner-header">
-      <div className="header-copy">
-        <p className="eyebrow">For service members & veterans</p>
-        <h1>Veteran transition planner</h1>
-        <p>
-          Plan the move from military pay to what comes next. Compare work, education,
-          and benefits against the cost of everyday life.
-        </p>
-        <div className="header-meta"><span><ShieldCheck aria-hidden="true" /> Saved on this device</span><a href="#sources">Information checked <time dateTime={INFORMATION_REVIEWED_AT}>{INFORMATION_REVIEWED_LABEL}</time><ArrowUpRight aria-hidden="true" /></a></div>
-      </div>
+      <PlannerIntroduction />
       <div className="header-facts" aria-label="Critical facts">
         <div>
           <span>Separation date</span>
@@ -1340,6 +1332,16 @@ function Header({ summary, settings }: HeaderProps) {
       </div>
     </header>
   );
+}
+
+export function PlannerIntroduction() {
+  return <div className="header-copy">
+    <p className="eyebrow">Free military-to-civilian income calculator</p>
+    <h1>Veteran transition planner</h1>
+    <p>Plan military separation with civilian pay, VA disability compensation, GI Bill
+      education benefits, and everyday expenses. For veterans and transitioning service members.</p>
+    <div className="header-meta"><span><ShieldCheck aria-hidden="true" /> No account required</span><a href="#sources">Information checked <time dateTime={INFORMATION_REVIEWED_AT}>{INFORMATION_REVIEWED_LABEL}</time><ArrowUpRight aria-hidden="true" /></a></div>
+  </div>;
 }
 
 type MetricCardProps = {
@@ -2742,7 +2744,7 @@ function PrivacyPanel({
   );
 }
 
-function SourcePanel() {
+export function SourcePanel({ showRefreshTimestamp = true }: { showRefreshTimestamp?: boolean }) {
   return (
     <footer className="source-panel" id="sources">
       <div>
@@ -2753,7 +2755,7 @@ function SourcePanel() {
           state workforce agencies, and tax authorities can change the real outcome.
         </p>
         <p className="review-stamp">Information verified <time dateTime={INFORMATION_REVIEWED_AT}>{INFORMATION_REVIEWED_LABEL}</time>.</p>
-        <RefreshTimestamp />
+        {showRefreshTimestamp ? <RefreshTimestamp /> : null}
         <p>2026 federal income-tax tables and the $184,500 Social Security wage base were checked against IRS and SSA publications. Future tax years use these as estimates. State taxes, dependent VA additions, and individual eligibility require your own confirmed inputs.</p>
       </div>
       <div className="source-stack">
@@ -2792,6 +2794,9 @@ function SourcePanel() {
           ))}
         </div>
       </div>
+      <p className="creator-credit">Created by <a href="https://www.elijahcharo.com/" rel="author">Elijah Charo <ArrowUpRight aria-hidden="true" /></a>.
+        <span> Independent planning tool. Not affiliated with the VA or Department of Defense.</span>
+      </p>
     </footer>
   );
 }
