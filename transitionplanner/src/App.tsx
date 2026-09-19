@@ -16,10 +16,15 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   WalletCards,
+  ArrowUpRight,
+  Box,
+  Printer,
 } from "lucide-react";
 import {
   BENEFIT_RATE_DATASETS,
   MGIB_ACTIVE_DUTY_RATE_DATASET,
+  MGIB_NEXT_RATE_DATASET,
+  getMgibRate,
   PELL_GRANT_RATE_DATASET,
   SMC_K_RATE_DATASET,
   VA_DISABILITY_RATE_DATASET,
@@ -27,7 +32,9 @@ import {
   type VaRating,
 } from "./data/benefitRates";
 import { SOURCE_LINKS } from "./data/sources";
+import { INFORMATION_REVIEWED_AT, INFORMATION_REVIEWED_LABEL } from "./data/review";
 import { getExpenseTargets } from "./plannerModel";
+import { civilianMonthFraction, getDateIssues, isCalendarDate, isCalendarMonth, MAX_PROJECTION_MONTHS, OUTSIDE_EMPLOYMENT_SOURCE, projectionLength, workDateIsValid } from "./planningDates";
 
 const FinancialTimeline3D = React.lazy(
   () => import("./components/FinancialTimeline3D/FinancialTimeline3D"),
@@ -58,7 +65,6 @@ type Rating = VaRating;
 type ScenarioId = "schoolFirst" | "bridge" | "partTime" | "fullTime" | "delayedVa";
 type WorkType = "none" | "contract" | "partTime" | "permanent";
 type UcxMode = "off" | "ifEligible";
-type ContractEnd = MonthId;
 type VaStart = MonthId | "none";
 type PayMode = "hourly" | "annual";
 type PlanningMode = "cashTiming" | "budgetEquivalent";
@@ -74,19 +80,20 @@ export type Status = "green" | "yellow" | "red";
 export type ModelSettings = {
   planningMode: PlanningMode;
   timelineStartMonth: MonthId;
+  projectionMonths: number;
   alreadySeparated: boolean;
   separationDate: string;
   terminalLeaveStartDate: string;
   schoolStartDate: string;
   schoolEndDate: string;
-  workStartMonth: MonthId;
+  workStartDate: string;
   pellDisbursementMonth: MonthId;
   activeDutyMonthly: number;
   rating: Rating;
   smcK: boolean;
   vaStart: VaStart;
   workType: WorkType;
-  contractEnd: ContractEnd;
+  contractEndDate: string;
   payMode: PayMode;
   hourlyRate: number;
   annualSalary: number;
@@ -105,6 +112,7 @@ export type ModelSettings = {
   educationBenefit: EducationBenefit;
   schoolLoad: SchoolLoad;
   educationMonthlyRate: number;
+  educationRateBasis: "threeYear" | "twoYear" | "manual";
   pellCase: PellCaseId;
   pellEnrollment: PellEnrollment;
   schoolTuition: number;
@@ -156,8 +164,8 @@ const DEFAULT_SCHOOL_TUITION = 0;
 const DEFAULT_EDUCATION_MONTHLY_RATE = MGIB_ACTIVE_DUTY_RATE_DATASET.fullTimeMonthlyRate;
 const SEPARATION_MONTH_MILITARY_PAY_DEFAULT = 0;
 const FINAL_MILITARY_PAY_DEFAULT = 0;
-const UCX_WEEKLY_MAX = 605;
-const DEFAULT_UCX_WEEKLY_BENEFIT = UCX_WEEKLY_MAX;
+const DEFAULT_UCX_WEEKLY_BENEFIT = 0;
+const UCX_INPUT_LIMIT = 5000;
 const UCX_TAX_HOLD_BACK = 0.9;
 const SMC_K_RATE = SMC_K_RATE_DATASET.monthlyRate;
 const VA_RATES = VA_DISABILITY_RATE_DATASET.rates;
@@ -226,19 +234,20 @@ const INCOME_LABELS: Record<IncomeKey, string> = {
 const BASE_SETTINGS: ModelSettings = {
   planningMode: "cashTiming",
   timelineStartMonth: DEFAULT_TIMELINE_START_MONTH,
+  projectionMonths: PROJECTION_MONTH_COUNT,
   alreadySeparated: false,
   separationDate: DEFAULT_SEPARATION_DATE,
   terminalLeaveStartDate: `${addMonths(toMonthId(DEFAULT_SEPARATION_DATE), -2)}-01`,
   schoolStartDate: DEFAULT_SCHOOL_START_DATE,
   schoolEndDate: DEFAULT_SCHOOL_END_DATE,
-  workStartMonth: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), -1),
+  workStartDate: `${addMonths(toMonthId(DEFAULT_SEPARATION_DATE), -1)}-16`,
   pellDisbursementMonth: toMonthId(DEFAULT_SCHOOL_START_DATE),
   activeDutyMonthly: DEFAULT_ACTIVE_DUTY_MONTHLY,
   rating: 70,
   smcK: false,
   vaStart: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 3),
   workType: "contract",
-  contractEnd: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 1),
+  contractEndDate: `${addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 1)}-${getDaysInMonth(addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 1))}`,
   payMode: "hourly",
   hourlyRate: 30,
   annualSalary: 65000,
@@ -257,6 +266,7 @@ const BASE_SETTINGS: ModelSettings = {
   educationBenefit: "mgib",
   schoolLoad: "full",
   educationMonthlyRate: DEFAULT_EDUCATION_MONTHLY_RATE,
+  educationRateBasis: "threeYear",
   pellCase: "typical",
   pellEnrollment: "full",
   schoolTuition: DEFAULT_SCHOOL_TUITION,
@@ -279,7 +289,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     stress: "High until VA and education benefits are flowing",
     schoolTime: "Best",
     risk: "High",
-    pellImplication: "Cleanest reduced-income story for professional judgment, but not automatic.",
+    pellImplication: "A change in income may support a school review of aid eligibility. An increase is not guaranteed.",
     ucxImplication: "Possible after separation if eligible; school availability rules need state verification.",
     settings: {
       ...BASE_SETTINGS,
@@ -294,16 +304,16 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     label: "Scenario B - Temporary bridge",
     shortLabel: "Contract bridge",
     description: "Temporary civilian work bridges the final military-pay period and early school/benefit timing.",
-    recommendation: "Best balance: use any work overlap to build reserve, clean up urgent debt, and keep school optionality.",
+    recommendation: "Temporary work can build a reserve; compare the contract end date with expected benefit deposits.",
     stress: "Medium, then lower if reserve is saved",
     schoolTime: "Strong after contract ends",
     risk: "Medium",
-    pellImplication: "Some income may weaken the special-circumstances case, but a natural contract end is easier to explain.",
+    pellImplication: "Aid depends on income, assets, enrollment, and the school's review of changed circumstances.",
     ucxImplication: "Potentially better fact pattern if the contract ends naturally; still verify with the state workforce agency.",
     settings: {
       ...BASE_SETTINGS,
       workType: "contract",
-      contractEnd: addMonths(toMonthId(BASE_SETTINGS.separationDate), 1),
+      contractEndDate: BASE_SETTINGS.contractEndDate,
       vaStart: addMonths(toMonthId(BASE_SETTINGS.separationDate), 3),
       ucxMode: "off",
       hourlyRate: 30,
@@ -338,7 +348,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     stress: "High workload, low cash stress",
     schoolTime: "Weakest",
     risk: "Low cash risk, high time risk",
-    pellImplication: "Likely weakest special-circumstances case because replacement income is steady.",
+    pellImplication: "Replacement earnings can affect aid; request an estimate from the financial aid office.",
     ucxImplication: "UCX generally not part of this path while employed full-time.",
     settings: {
       ...BASE_SETTINGS,
@@ -357,7 +367,7 @@ const SCENARIOS: Record<ScenarioId, ScenarioPreset> = {
     stress: "Very high before VA begins",
     schoolTime: "Best, if affordable",
     risk: "Very high",
-    pellImplication: "Strong reduced-income argument, but timing and award are still school decisions.",
+    pellImplication: "The school decides whether income changes justify an aid adjustment and when funds arrive.",
     ucxImplication: "Models UCX at zero to show the reserve needed without it.",
     settings: {
       ...BASE_SETTINGS,
@@ -524,7 +534,7 @@ function savePlannerState(state: PlannerState) {
     window.localStorage.setItem(
       PLANNER_STORAGE_KEY,
       JSON.stringify({
-        version: 2,
+        version: 3,
         scenarioId: state.scenarioId,
         settings: state.settings,
       }),
@@ -552,6 +562,7 @@ function normalizePlannerState(value: unknown): PlannerState | null {
       timelineStartMonth: isMonthId(savedSettings.timelineStartMonth)
         ? savedSettings.timelineStartMonth
         : baseSettings.timelineStartMonth,
+      projectionMonths: projectionLength(clampNumber(savedSettings.projectionMonths, 12, 1, MAX_PROJECTION_MONTHS)),
       alreadySeparated:
         typeof savedSettings.alreadySeparated === "boolean"
           ? savedSettings.alreadySeparated
@@ -568,9 +579,11 @@ function normalizePlannerState(value: unknown): PlannerState | null {
       schoolEndDate: isDateInput(savedSettings.schoolEndDate)
         ? savedSettings.schoolEndDate
         : baseSettings.schoolEndDate,
-      workStartMonth: isMonthId(savedSettings.workStartMonth)
-        ? savedSettings.workStartMonth
-        : baseSettings.workStartMonth,
+      workStartDate: isDateInput(savedSettings.workStartDate)
+        ? savedSettings.workStartDate
+        : isMonthId(savedSettings.workStartMonth)
+          ? `${savedSettings.workStartMonth}-16`
+          : baseSettings.workStartDate,
       pellDisbursementMonth: isMonthId(savedSettings.pellDisbursementMonth)
         ? savedSettings.pellDisbursementMonth
         : baseSettings.pellDisbursementMonth,
@@ -584,9 +597,11 @@ function normalizePlannerState(value: unknown): PlannerState | null {
       smcK: typeof savedSettings.smcK === "boolean" ? savedSettings.smcK : baseSettings.smcK,
       vaStart: isVaStart(savedSettings.vaStart) ? savedSettings.vaStart : baseSettings.vaStart,
       workType: isWorkType(savedSettings.workType) ? savedSettings.workType : baseSettings.workType,
-      contractEnd: isContractEnd(savedSettings.contractEnd)
-        ? savedSettings.contractEnd
-        : baseSettings.contractEnd,
+      contractEndDate: isDateInput(savedSettings.contractEndDate)
+        ? savedSettings.contractEndDate
+        : isMonthId(savedSettings.contractEnd)
+          ? `${savedSettings.contractEnd}-${getDaysInMonth(savedSettings.contractEnd)}`
+          : baseSettings.contractEndDate,
       payMode: isPayMode(savedSettings.payMode) ? savedSettings.payMode : baseSettings.payMode,
       hourlyRate: clampNumber(savedSettings.hourlyRate, baseSettings.hourlyRate, 0, 250),
       annualSalary: clampNumber(savedSettings.annualSalary, baseSettings.annualSalary, 0, 500000),
@@ -635,7 +650,7 @@ function normalizePlannerState(value: unknown): PlannerState | null {
         savedSettings.ucxWeeklyBenefit,
         baseSettings.ucxWeeklyBenefit,
         0,
-        UCX_WEEKLY_MAX,
+        UCX_INPUT_LIMIT,
       ),
       educationBenefit: isEducationBenefit(savedSettings.educationBenefit)
         ? savedSettings.educationBenefit
@@ -649,6 +664,9 @@ function normalizePlannerState(value: unknown): PlannerState | null {
         0,
         10000,
       ),
+      educationRateBasis: savedSettings.educationRateBasis === "threeYear" || savedSettings.educationRateBasis === "twoYear"
+        ? savedSettings.educationRateBasis
+        : "manual",
       pellCase: isPellCaseId(savedSettings.pellCase)
         ? savedSettings.pellCase
         : baseSettings.pellCase,
@@ -909,6 +927,19 @@ type SelectControlProps<T extends string | number> = {
   onChange: (value: T) => void;
 };
 
+function MonthControl({ label, value, onChange, optionalLabel, defaultMonth, invalid }: {
+  label: string; value: string; onChange: (value: string) => void;
+  optionalLabel?: string; defaultMonth?: string; invalid?: boolean;
+}) {
+  return <div className="month-control">
+    {optionalLabel ? <label className="checkbox-row">
+      <input type="checkbox" checked={value !== "none"} onChange={(event) => onChange(event.target.checked ? defaultMonth ?? DEFAULT_TIMELINE_START_MONTH : "none")} />
+      <span>{optionalLabel}</span>
+    </label> : null}
+    <label><span>{label}</span><input type="month" value={value === "none" ? "" : value} disabled={value === "none"} aria-invalid={invalid} onChange={(event) => onChange(event.target.value)} /></label>
+  </div>;
+}
+
 function SelectControl<T extends string | number>({
   label,
   value,
@@ -1082,12 +1113,15 @@ function App() {
         ...next,
         planningMode: current.settings.planningMode,
         timelineStartMonth: current.settings.timelineStartMonth,
+        projectionMonths: current.settings.projectionMonths,
         alreadySeparated: current.settings.alreadySeparated,
         separationDate: current.settings.separationDate,
         terminalLeaveStartDate: current.settings.terminalLeaveStartDate,
         schoolStartDate: current.settings.schoolStartDate,
         schoolEndDate: current.settings.schoolEndDate,
-        workStartMonth: current.settings.workStartMonth,
+        workStartDate: current.settings.workStartDate,
+        contractEndDate: current.settings.contractEndDate,
+        vaStart: getScenarioVaStart(nextScenarioId, current.settings),
         pellDisbursementMonth: current.settings.pellDisbursementMonth,
         activeDutyMonthly: current.settings.activeDutyMonthly,
         rating: current.settings.rating,
@@ -1109,6 +1143,7 @@ function App() {
         educationBenefit: current.settings.educationBenefit,
         schoolLoad: current.settings.schoolLoad,
         educationMonthlyRate: current.settings.educationMonthlyRate,
+        educationRateBasis: current.settings.educationRateBasis,
         pellCase: current.settings.pellCase,
         pellEnrollment: current.settings.pellEnrollment,
         schoolTuition: current.settings.schoolTuition,
@@ -1143,17 +1178,26 @@ function App() {
 
   return (
     <ReducedMotionContext.Provider value={prefersReducedMotion}>
-    <main className={`planner-shell${motionReady ? " motion-ready" : ""}`} ref={shellRef}>
+    <main className={`planner-shell${motionReady ? " motion-ready" : ""}`} ref={shellRef} style={{ "--month-count": series.length, "--chart-columns": Math.min(12, series.length) } as React.CSSProperties}>
       <div className={`model-cue${modelCue ? " is-visible" : ""}`} aria-hidden="true">
         {modelCue}
       </div>
 
+      <nav className="app-bar" aria-label="Planner navigation">
+        <a className="app-brand" href="#"><BarChart3 aria-hidden="true" /> Transition planner</a>
+        <div className="app-nav-links">
+          <a href="#hologram-heading">Overview</a>
+          <a href="#controls-heading">Inputs</a>
+          <a href="#sources">Sources <ArrowUpRight aria-hidden="true" /></a>
+        </div>
+        <button type="button" className="icon-button" onClick={printPlan} title="Print or save plan" aria-label="Print or save plan"><Printer /></button>
+      </nav>
       <Header summary={summary} settings={settings} />
 
       <section className="metric-grid" aria-label="Planner summary">
         <MetricCard
           icon={<ShieldCheck aria-hidden="true" />}
-          label="Likely safest path"
+          label="Selected scenario"
           value={SCENARIOS[scenarioId].shortLabel}
           detail={SCENARIOS[scenarioId].recommendation}
         />
@@ -1178,7 +1222,7 @@ function App() {
         />
         <MetricCard
           icon={<PiggyBank aria-hidden="true" />}
-          label="Reserve needed after DOS"
+          label="Post-separation reserve"
           value={<AnimatedNumber value={summary.reserveNeeded} />}
           detail="Maximum cumulative shortfall against essential expenses after the separation month."
         />
@@ -1194,10 +1238,10 @@ function App() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Scenario controls</p>
-            <h2 id="scenario-heading">Choose the transition shape</h2>
+            <h2 id="scenario-heading">Compare your options</h2>
           </div>
           <span className="model-stamp">
-            Rate check: VA 2026 table
+            {series.length}-month projection
           </span>
         </div>
         <div className="scenario-buttons" role="group" aria-label="Scenario presets">
@@ -1268,12 +1312,13 @@ function Header({ summary, settings }: HeaderProps) {
   return (
     <header className="planner-header">
       <div className="header-copy">
-        <p className="eyebrow">Veteran transition planner | local-only calculator</p>
-        <h1>Veteran transition income model</h1>
+        <p className="eyebrow">For service members & veterans</p>
+        <h1>Veteran transition planner</h1>
         <p>
-          A month-by-month decision-support planner for comparing civilian work, VA compensation,
-          education benefits, Pell, UCX, expenses, and cash reserve risk.
+          Plan the move from military pay to what comes next. Compare work, education,
+          and benefits against the cost of everyday life.
         </p>
+        <div className="header-meta"><span><ShieldCheck aria-hidden="true" /> Saved on this device</span><a href="#sources">Information checked <time dateTime={INFORMATION_REVIEWED_AT}>{INFORMATION_REVIEWED_LABEL}</time><ArrowUpRight aria-hidden="true" /></a></div>
       </div>
       <div className="header-facts" aria-label="Critical facts">
         <div>
@@ -1335,15 +1380,8 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
   const firstEducationPayment = getFirstEducationBenefitPayment(settings);
   const educationIsModeled = educationMonthly > 0 && settings.educationBenefit !== "none" && settings.schoolLoad !== "none";
   const educationRateWarning = getEducationRateWarning(settings);
-  const monthOptions = getTimelineMonthOptions(settings);
-  const benefitMonthOptions = [
-    { value: "none" as const, label: "No VA in projection" },
-    ...monthOptions,
-  ];
-  const finalPayMonthOptions = [
-    ...monthOptions,
-    { value: "none" as const, label: "Hold out until confirmed" },
-  ];
+  const dateIssues = getDateIssues(settings);
+  const dateInvalid = (field: keyof ModelSettings) => dateIssues.some((issue) => issue.field === field && issue.severity === "error");
   const pellEnrollmentLabel =
     PELL_ENROLLMENT_OPTIONS.find((option) => option.value === settings.pellEnrollment)?.label ??
     "No Pell";
@@ -1391,6 +1429,10 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
         </span>
       </div>
 
+      {dateIssues.length > 0 ? <div className="date-checks" aria-live="polite">
+        <strong><CalendarDays aria-hidden="true" /> Timeline checks</strong>
+        <ul>{dateIssues.map((issue, index) => <li key={`${issue.field}-${index}`} className={issue.severity === "error" ? "date-error" : ""}>{issue.message}</li>)}</ul>
+      </div> : null}
       <div className="control-grid" id={controlGridId} hidden={!isExpanded}>
         <fieldset>
           <legend>
@@ -1411,29 +1453,37 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <input
                 type="month"
                 value={settings.timelineStartMonth}
+                aria-invalid={dateInvalid("timelineStartMonth")}
                 onChange={(event) => onSettingChange("timelineStartMonth", event.target.value)}
               />
             </label>
+            <label>
+              <span>Months in view</span>
+              <input type="number" min={1} max={MAX_PROJECTION_MONTHS} step={1} value={settings.projectionMonths} aria-invalid={dateInvalid("projectionMonths")} onChange={(event) => onSettingChange("projectionMonths", Number(event.target.value))} />
+            </label>
+          </div>
+          <div className="field-pair">
             <label>
               <span>Separation date</span>
               <input
                 type="date"
                 value={settings.separationDate}
-                disabled={settings.alreadySeparated}
+                aria-invalid={dateInvalid("separationDate")}
                 onChange={(event) => onSettingChange("separationDate", event.target.value)}
               />
             </label>
-          </div>
-          <div className="field-pair">
             <label>
               <span>Terminal leave starts</span>
               <input
                 type="date"
                 value={settings.terminalLeaveStartDate}
                 disabled={settings.alreadySeparated}
+                max={settings.separationDate || undefined}
+                aria-invalid={dateInvalid("terminalLeaveStartDate")}
                 onChange={(event) => onSettingChange("terminalLeaveStartDate", event.target.value)}
               />
             </label>
+          </div>
             <label>
               <span>Active-duty take-home/mo</span>
               <input
@@ -1444,7 +1494,6 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
                 onChange={(event) => onSettingChange("activeDutyMonthly", Number(event.target.value))}
               />
             </label>
-          </div>
           <p className="field-note">
             Inputs stay in this browser's local storage. This calculator does not need SSNs,
             claim numbers, medical details, bank credentials, or account creation.
@@ -1470,10 +1519,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             />
             <span>Include SMC-K ({DETAILED_MONEY_FORMATTER.format(SMC_K_RATE)}/mo)</span>
           </label>
-          <SelectControl
+          <MonthControl
             label="VA decision / catch-up month"
             value={settings.vaStart}
-            options={benefitMonthOptions}
+            optionalLabel="Include VA payments"
+            defaultMonth={addMonths(toMonthId(settings.separationDate), 3)}
+            invalid={dateInvalid("vaStart")}
             onChange={(value) => onSettingChange("vaStart", value)}
           />
           <label className="checkbox-row">
@@ -1502,8 +1553,9 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </small>
           </div>
           <p className="field-note">
-            Uses 2026 VA veteran-only rates as a planning table. Catch-up uses the first full
-            month after separation as the first modeled payable month.
+            Uses 2026 veteran-only rates; dependent additions are not included. Assumes an award
+            effective the day after separation, with payment eligibility beginning the following month.
+            A decision late in a month can move the deposit into the next month.
           </p>
         </fieldset>
 
@@ -1518,6 +1570,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <input
                 type="date"
                 value={settings.schoolStartDate}
+                aria-invalid={dateInvalid("schoolStartDate")}
                 onChange={(event) => onSettingChange("schoolStartDate", event.target.value)}
               />
             </label>
@@ -1526,6 +1579,8 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <input
                 type="date"
                 value={settings.schoolEndDate}
+                min={settings.schoolStartDate || undefined}
+                aria-invalid={dateInvalid("schoolEndDate")}
                 onChange={(event) => onSettingChange("schoolEndDate", event.target.value)}
               />
             </label>
@@ -1565,11 +1620,21 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               type="number"
               min={0}
               step={25}
-              disabled={settings.educationBenefit === "none"}
-              value={settings.educationMonthlyRate}
+              disabled={settings.educationBenefit === "none" || (settings.educationBenefit === "mgib" && settings.educationRateBasis !== "manual")}
+              value={settings.educationBenefit === "mgib" && settings.educationRateBasis !== "manual" ? educationMonthly : settings.educationMonthlyRate}
               onChange={(event) => onSettingChange("educationMonthlyRate", Number(event.target.value))}
             />
           </label>
+          {settings.educationBenefit === "mgib" ? <SelectControl
+            label="MGIB rate basis"
+            value={settings.educationRateBasis}
+            options={[
+              { value: "threeYear", label: "Published rates / 3+ years served" },
+              { value: "twoYear", label: "Published rates / 2-year rate" },
+              { value: "manual", label: "Custom monthly amount" },
+            ]}
+            onChange={(value) => onSettingChange("educationRateBasis", value)}
+          /> : null}
           <SelectControl
             label="Pell case"
             value={settings.pellCase}
@@ -1582,10 +1647,10 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             options={PELL_ENROLLMENT_OPTIONS}
             onChange={(value) => onSettingChange("pellEnrollment", value)}
           />
-          <SelectControl
+          <MonthControl
             label="Pell disbursement month"
             value={settings.pellDisbursementMonth}
-            options={monthOptions}
+            invalid={dateInvalid("pellDisbursementMonth")}
             onChange={(value) => onSettingChange("pellDisbursementMonth", value)}
           />
           <div className="inline-result">
@@ -1621,8 +1686,9 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </small>
           </div>
           <p className="field-note">
-            Model one primary education benefit at a time. MGIB uses the current full-time
-            VA rate as an editable planning value; Post-9/11 and VR&E use manual monthly
+            Model one primary education benefit at a time. Published MGIB college rates adjust
+            for enrollment and rate year. Custom amounts should reflect your school load and any kicker.
+            Post-9/11 and VR&E use manual monthly
             planning amounts until their fact-specific calculations are added. Pell remains
             separate from GI Bill assumptions and can be viewed as cash timing or budget equivalent.
             {educationRateWarning ? ` ${educationRateWarning}` : ""}
@@ -1640,12 +1706,15 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             options={WORK_OPTIONS}
             onChange={(value) => onSettingChange("workType", value)}
           />
-          <SelectControl
-            label="Work starts"
-            value={settings.workStartMonth}
-            options={monthOptions}
-            onChange={(value) => onSettingChange("workStartMonth", value)}
-          />
+          <label>
+            <span>Work starts</span>
+            <input type="date" value={settings.workStartDate} disabled={settings.workType === "none"} aria-invalid={dateInvalid("workStartDate")} aria-describedby="work-timing-note" onChange={(event) => onSettingChange("workStartDate", event.target.value)} />
+          </label>
+          {settings.workType !== "none" ? <p className="field-note" id="work-timing-note">
+            {settings.alreadySeparated ? "Already separated: work can begin on any valid date. " : `For this transition-work model, start on or after terminal leave begins (${formatDateLabel(settings.terminalLeaveStartDate)}), or after separation. Terminal leave allows time away from duty while military pay continues, so civilian and military income can overlap. `}
+            Terminal leave is still active-duty service; required command approval, conflict-of-interest rules, and employer-specific restrictions still apply. Separately approved off-duty work before terminal leave is possible but is not modeled here. <a href={OUTSIDE_EMPLOYMENT_SOURCE} target="_blank" rel="noreferrer">DoD outside-employment guidance</a>.
+            {" "}Partial work months use calendar-day proration. Actual paycheck dates may differ.
+          </p> : null}
           <div className="segmented-label">Civilian pay basis</div>
           <div className="segmented-control two-up" role="group" aria-label="Civilian pay basis">
             <button
@@ -1705,12 +1774,10 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
             </label>
           )}
           {settings.workType === "contract" ? (
-            <SelectControl
-              label="Contract ends"
-              value={settings.contractEnd}
-              options={monthOptions}
-              onChange={(value) => onSettingChange("contractEnd", value)}
-            />
+            <label>
+              <span>Contract ends</span>
+              <input type="date" value={settings.contractEndDate} min={settings.workStartDate || undefined} aria-invalid={dateInvalid("contractEndDate")} onChange={(event) => onSettingChange("contractEndDate", event.target.value)} />
+            </label>
           ) : null}
           <div className="field-pair">
             <SelectControl
@@ -1844,7 +1911,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <input
                 type="number"
                 min={0}
-                max={UCX_WEEKLY_MAX}
+                max={UCX_INPUT_LIMIT}
                 step={5}
                 value={settings.ucxWeeklyBenefit}
                 onChange={(event) => onSettingChange("ucxWeeklyBenefit", Number(event.target.value))}
@@ -1913,10 +1980,12 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               />
             </label>
           </div>
-          <SelectControl
+          <MonthControl
             label="Final pay timing"
             value={settings.finalMilitaryPayMonth}
-            options={finalPayMonthOptions}
+            optionalLabel="Include a final military-pay deposit"
+            defaultMonth={addMonths(toMonthId(settings.separationDate), 1)}
+            invalid={dateInvalid("finalMilitaryPayMonth")}
             onChange={(value) => onSettingChange("finalMilitaryPayMonth", value)}
           />
           <label>
@@ -1978,8 +2047,8 @@ function HolographicTimelineSection({
     >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Analysis mode</p>
-          <h2 id="hologram-heading">Holographic financial timeline</h2>
+          <p className="eyebrow">Income projection</p>
+          <h2 id="hologram-heading">Financial timeline</h2>
         </div>
         <div className="segmented-control two-up analysis-mode-toggle" role="group" aria-label="Timeline analysis mode">
           <button
@@ -1987,14 +2056,14 @@ function HolographicTimelineSection({
             aria-pressed={mode === "standard"}
             onClick={() => setMode("standard")}
           >
-            Standard
+            <BarChart3 aria-hidden="true" /> Standard
           </button>
           <button
             type="button"
             aria-pressed={mode === "holographic"}
             onClick={() => setMode("holographic")}
           >
-            Holographic
+            <Box aria-hidden="true" /> Holographic
           </button>
         </div>
       </div>
@@ -2013,6 +2082,7 @@ function HolographicTimelineSection({
             hoveredMonth={hoveredMonth}
             onMonthFocus={onMonthFocus}
             reducedMotion={reducedMotion}
+            onStandardView={() => setMode("standard")}
           />
         </React.Suspense>
       ) : (
@@ -2077,13 +2147,29 @@ function IncomeLayerChart({
         </div>
       </div>
 
-      <div className="income-chart" role="img" aria-label="Stacked monthly income chart">
+      <div className="income-chart" role="group" aria-label="Stacked monthly income chart">
         {series.map((month, index) => (
           <div
-            className={`stack-column${index === 0 ? " is-chart-edge-start" : ""}${
-              index === series.length - 1 ? " is-chart-edge-end" : ""
+            className={`stack-column${index % 12 < 2 ? " is-chart-edge-start" : ""}${
+              index % 12 >= 10 || index === series.length - 1 ? " is-chart-edge-end" : ""
             }${hoveredMonth === month.id ? " is-month-focused" : ""}`}
             key={month.id}
+            tabIndex={0}
+            role="button"
+            aria-label={`${month.label}: ${formatMoney(month.total)} total resources`}
+            onFocus={() => onMonthFocus(month.id)}
+            onBlur={() => onMonthFocus(null)}
+            onClick={() => onMonthFocus(hoveredMonth === month.id ? null : month.id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onMonthFocus(month.id);
+              }
+              if (event.key === "Escape") {
+                event.currentTarget.blur();
+                onMonthFocus(null);
+              }
+            }}
             onPointerEnter={() => onMonthFocus(month.id)}
             onPointerLeave={() => onMonthFocus(null)}
           >
@@ -2131,7 +2217,7 @@ function IncomeLayerChart({
               })}
               <em>Total: {formatMoney(month.total)}</em>
             </div>
-            <span className="stack-month">{month.short}</span>
+            <span className="stack-month">{month.short}{series.length > 12 ? ` '${month.id.slice(2, 4)}` : ""}</span>
             <strong>
               <AnimatedNumber value={month.total} />
             </strong>
@@ -2187,7 +2273,7 @@ function MonthlyStressGrid({
             onPointerEnter={() => onMonthFocus(month.id)}
             onPointerLeave={() => onMonthFocus(null)}
           >
-            <span>{month.short}</span>
+            <span>{month.short}{series.length > 12 ? ` '${month.id.slice(2, 4)}` : ""}</span>
             <strong>
               <AnimatedNumber value={month.effective} />
             </strong>
@@ -2252,7 +2338,7 @@ function MasterTimeline({
                 onPointerEnter={() => onMonthFocus(month.id)}
                 onPointerLeave={() => onMonthFocus(null)}
               >
-                {month.short}
+                {month.short}{series.length > 12 ? ` '${month.id.slice(2, 4)}` : ""}
               </span>
             ))}
           </div>
@@ -2383,7 +2469,8 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
             Confirmed / strong facts
           </h3>
           <ul>
-            <li>Projection starts {formatMonthLabel(settings.timelineStartMonth)} and spans 12 months.</li>
+            <li>Projection starts {formatMonthLabel(settings.timelineStartMonth)} and spans {projectionLength(settings.projectionMonths)} months.</li>
+            <li>Civilian work begins {formatDateLabel(settings.workStartDate)}{settings.workType === "contract" ? ` and ends ${formatDateLabel(settings.contractEndDate)}` : ""}. Partial months use actual calendar days, not a fixed half-month assumption.</li>
             <li>Separation status is user-entered: {settings.alreadySeparated ? "already separated" : formatDateLabel(settings.separationDate)}.</li>
             <li>School/training period is user-entered: {formatDateLabel(settings.schoolStartDate)} through {formatDateLabel(settings.schoolEndDate)}.</li>
             <li>Inputs are stored locally in this browser unless a future feature explicitly states otherwise.</li>
@@ -2397,7 +2484,7 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
           </h3>
           <ul>
             <li>
-              {educationBenefitLabel} uses editable {formatMoney(settings.educationMonthlyRate)}/mo
+              {educationBenefitLabel} uses {formatMoney(getEducationBenefitMonthly(settings))}/mo
               when a monthly education benefit is modeled.
             </li>
             <li>{educationStatus}</li>
@@ -2657,14 +2744,17 @@ function PrivacyPanel({
 
 function SourcePanel() {
   return (
-    <footer className="source-panel">
+    <footer className="source-panel" id="sources">
       <div>
         <p className="eyebrow">Rates & sources</p>
-        <h2>Planning model, not an official eligibility decision</h2>
+        <h2>Rates, sources & review dates</h2>
         <p>
           Official rates are separated from working assumptions. VA, Federal Student Aid, schools,
           state workforce agencies, and tax authorities can change the real outcome.
         </p>
+        <p className="review-stamp">Information verified <time dateTime={INFORMATION_REVIEWED_AT}>{INFORMATION_REVIEWED_LABEL}</time>.</p>
+        <RefreshTimestamp />
+        <p>2026 federal income-tax tables and the $184,500 Social Security wage base were checked against IRS and SSA publications. Future tax years use these as estimates. State taxes, dependent VA additions, and individual eligibility require your own confirmed inputs.</p>
       </div>
       <div className="source-stack">
         <div className="rate-source-grid">
@@ -2681,6 +2771,7 @@ function SourcePanel() {
                   <dt>Verified</dt>
                   <dd>{formatSourceDate(dataset.verifiedAt)}</dd>
                 </div>
+                {dataset.sourceUpdatedAt ? <div><dt>Source updated</dt><dd>{formatSourceDate(dataset.sourceUpdatedAt)}</dd></div> : null}
                 <div>
                   <dt>Status</dt>
                   <dd>{formatRateStatus(dataset.status)}</dd>
@@ -2703,6 +2794,11 @@ function SourcePanel() {
       </div>
     </footer>
   );
+}
+
+function RefreshTimestamp() {
+  const [refreshedAt] = React.useState(() => new Date());
+  return <p className="refresh-stamp">Page refreshed <time dateTime={refreshedAt.toISOString()}>{new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "long" }).format(refreshedAt)}</time>. Source review dates do not change on reload.</p>;
 }
 
 function formatRatePeriod(effectiveFrom: string, effectiveThrough?: string) {
@@ -2768,10 +2864,6 @@ function isVaStart(value: unknown): value is VaStart {
 
 function isWorkType(value: unknown): value is WorkType {
   return value === "none" || value === "contract" || value === "partTime" || value === "permanent";
-}
-
-function isContractEnd(value: unknown): value is ContractEnd {
-  return isMonthId(value);
 }
 
 function isPayMode(value: unknown): value is PayMode {
@@ -2880,18 +2972,27 @@ function summarizeSeries(series: MonthModel[], settings: ModelSettings) {
   };
 }
 
+function getScenarioVaStart(scenarioId: ScenarioId, settings: ModelSettings) {
+  if (scenarioId !== "delayedVa" || settings.vaStart === "none") return settings.vaStart;
+  const delayedMonth = addMonths(toMonthId(settings.separationDate), 6);
+  return settings.vaStart > delayedMonth ? settings.vaStart : delayedMonth;
+}
+
 function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
   return Object.values(SCENARIOS).map((scenario) => {
     const settings: ModelSettings = {
       ...scenario.settings,
       planningMode: baseSettings.planningMode,
       timelineStartMonth: baseSettings.timelineStartMonth,
+      projectionMonths: baseSettings.projectionMonths,
       alreadySeparated: baseSettings.alreadySeparated,
       separationDate: baseSettings.separationDate,
       terminalLeaveStartDate: baseSettings.terminalLeaveStartDate,
       schoolStartDate: baseSettings.schoolStartDate,
       schoolEndDate: baseSettings.schoolEndDate,
-      workStartMonth: baseSettings.workStartMonth,
+      workStartDate: baseSettings.workStartDate,
+      contractEndDate: baseSettings.contractEndDate,
+      vaStart: getScenarioVaStart(scenario.id, baseSettings),
       pellDisbursementMonth: baseSettings.pellDisbursementMonth,
       activeDutyMonthly: baseSettings.activeDutyMonthly,
       rating: baseSettings.rating,
@@ -2913,6 +3014,7 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
       educationBenefit: baseSettings.educationBenefit,
       schoolLoad: baseSettings.schoolLoad,
       educationMonthlyRate: baseSettings.educationMonthlyRate,
+      educationRateBasis: baseSettings.educationRateBasis,
       pellCase: baseSettings.pellCase,
       pellEnrollment: baseSettings.pellEnrollment,
       schoolTuition: baseSettings.schoolTuition,
@@ -2926,8 +3028,8 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
     };
     const series = calculateSeries(settings);
     const postDosMonths = getPostSeparationMonths(series, settings);
-    const average = postDosMonths.reduce((sum, month) => sum + month.effective, 0) / postDosMonths.length;
-    const minimum = Math.min(...postDosMonths.map((month) => month.effective));
+    const average = postDosMonths.length ? postDosMonths.reduce((sum, month) => sum + month.effective, 0) / postDosMonths.length : 0;
+    const minimum = postDosMonths.length ? Math.min(...postDosMonths.map((month) => month.effective)) : 0;
     const reserveNeeded = getReserveNeeded(postDosMonths, settings);
     const dangerMonths = postDosMonths.filter((month) => month.status === "red").length;
 
@@ -3046,9 +3148,12 @@ function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
 }
 
 function getMilitaryPay(monthId: MonthId, settings: ModelSettings) {
+  if (!isDateInput(settings.separationDate)) return 0;
+  const finalPay = isMonthId(settings.finalMilitaryPayMonth) && settings.finalMilitaryPayMonth >= toMonthId(settings.separationDate)
+    ? Math.max(0, settings.finalMilitaryPay) : 0;
   if (settings.alreadySeparated) {
     return settings.planningMode === "cashTiming" && monthId === settings.finalMilitaryPayMonth
-      ? Math.max(0, settings.finalMilitaryPay)
+      ? finalPay
       : 0;
   }
 
@@ -3077,12 +3182,12 @@ function getMilitaryPay(monthId: MonthId, settings: ModelSettings) {
 
     return (
       estimatedSeparationMonthPay +
-      (settings.finalMilitaryPayMonth === separationMonth ? Math.max(0, settings.finalMilitaryPay) : 0)
+      (settings.finalMilitaryPayMonth === separationMonth ? finalPay : 0)
     );
   }
 
   if (settings.planningMode === "cashTiming" && settings.finalMilitaryPayMonth === monthId) {
-    return Math.max(0, settings.finalMilitaryPay);
+    return finalPay;
   }
 
   return 0;
@@ -3099,45 +3204,26 @@ function getCivilianPay(monthId: MonthId, settings: ModelSettings) {
 }
 
 function getCivilianWorkFactor(monthId: MonthId, settings: ModelSettings) {
-  if (settings.workType === "none") {
-    return 0;
-  }
-
-  const monthIndex = getMonthIndex(monthId);
-  const startIndex = getMonthIndex(settings.workStartMonth);
-
-  if (monthIndex < startIndex) {
-    return 0;
-  }
-
-  if (settings.workType === "contract" && monthIndex > getMonthIndex(settings.contractEnd)) {
-    return 0;
-  }
-
-  return monthId === settings.workStartMonth ? 0.5 : 1;
+  return civilianMonthFraction(monthId, settings);
 }
 
 function getUcxPay(monthId: MonthId, settings: ModelSettings) {
-  if (settings.ucxMode === "off") {
+  if (settings.ucxMode === "off" || !isDateInput(settings.separationDate) || (settings.workType !== "none" && !workDateIsValid(settings))) {
     return 0;
   }
 
-  const weeklyBenefit = Math.max(0, Math.min(UCX_WEEKLY_MAX, settings.ucxWeeklyBenefit));
+  const weeklyBenefit = Math.max(0, Math.min(UCX_INPUT_LIMIT, settings.ucxWeeklyBenefit));
   const monthIndex = getMonthIndex(monthId);
   const earliestIndex = getMonthIndex(addMonths(toMonthId(settings.separationDate), 1));
 
-  if (monthIndex < earliestIndex || settings.workType === "permanent") {
+  if (monthIndex < earliestIndex) {
     return 0;
   }
 
-  if (settings.workType === "contract") {
-    const firstEligibleMonth = getMonthIndex(settings.contractEnd) + 1;
-    if (monthIndex < firstEligibleMonth) {
-      return 0;
-    }
-  }
+  const workingThisMonth = getCivilianWorkFactor(monthId, settings) > 0;
+  if (workingThisMonth && (settings.workType === "permanent" || settings.workType === "contract")) return 0;
 
-  if (settings.workType === "partTime") {
+  if (settings.workType === "partTime" && workingThisMonth) {
     const weeklyEarnings = getWorkPreview(settings).weeklyGross;
     const weeklyPartial = Math.max(0, Math.min(weeklyBenefit, weeklyBenefit * 1.25 - weeklyEarnings));
     return weeklyPartial * (52 / 12) * UCX_TAX_HOLD_BACK;
@@ -3147,15 +3233,15 @@ function getUcxPay(monthId: MonthId, settings: ModelSettings) {
 }
 
 function getVaPay(monthId: MonthId, settings: ModelSettings) {
-  if (settings.vaStart === "none") {
+  if (!isVaTimingValid(settings)) {
     return 0;
   }
 
-  return getMonthIndex(monthId) > getMonthIndex(settings.vaStart) ? getVaMonthly(settings) : 0;
+  return getMonthIndex(monthId) > Math.max(getMonthIndex(settings.vaStart), getMonthIndex(getFirstVaPayableMonth(settings))) ? getVaMonthly(settings) : 0;
 }
 
 function getVaBackpay(monthId: MonthId, settings: ModelSettings) {
-  if (!settings.includeVaBackpay || settings.vaStart === "none" || monthId !== settings.vaStart) {
+  if (!settings.includeVaBackpay || !isVaTimingValid(settings) || monthId !== settings.vaStart) {
     return 0;
   }
 
@@ -3171,14 +3257,13 @@ function getEducationBenefitPay(monthId: MonthId, settings: ModelSettings) {
     return 0;
   }
 
-  if (settings.planningMode === "budgetEquivalent") {
-    return getEducationBenefitMonthly(settings) * getSchoolMonthFactor(monthId, settings);
-  }
-
-  return getEducationBenefitMonthly(settings) * getSchoolMonthFactor(addMonths(monthId, -1), settings);
+  const earnedMonth = settings.planningMode === "budgetEquivalent" ? monthId : addMonths(monthId, -1);
+  const fraction = getSchoolMonthFactor(earnedMonth, settings, settings.educationBenefit === "mgib");
+  return getEducationBenefitMonthly(settings, earnedMonth) * fraction;
 }
 
 function getPellPay(monthId: MonthId, settings: ModelSettings) {
+  if (!isDateInput(settings.schoolStartDate) || !isDateInput(settings.schoolEndDate) || settings.schoolEndDate < settings.schoolStartDate) return 0;
   if (settings.planningMode === "budgetEquivalent") {
     return isSchoolMonth(monthId, settings) ? getPellMonthly(settings) : 0;
   }
@@ -3220,12 +3305,16 @@ function getEducationRateInputLabel(educationBenefit: EducationBenefit) {
   }
 }
 
-function getEducationRateWarning(settings: Pick<ModelSettings, "educationBenefit" | "schoolStartDate">) {
-  if (settings.educationBenefit === "mgib" && MGIB_ACTIVE_DUTY_RATE_DATASET.effectiveThrough) {
-    const verifiedThrough = toMonthId(MGIB_ACTIVE_DUTY_RATE_DATASET.effectiveThrough);
-    if (getMonthIndex(toMonthId(settings.schoolStartDate)) > getMonthIndex(verifiedThrough)) {
-      return "Future MGIB rate is not yet verified for this school period; the current rate is used as an editable planning placeholder.";
+function getEducationRateWarning(settings: Pick<ModelSettings, "educationBenefit" | "schoolStartDate" | "schoolEndDate" | "educationRateBasis">) {
+  if (settings.educationBenefit === "mgib") {
+    if (settings.schoolEndDate > (MGIB_NEXT_RATE_DATASET.effectiveThrough ?? "") || settings.schoolStartDate < MGIB_ACTIVE_DUTY_RATE_DATASET.effectiveFrom) {
+      return settings.educationRateBasis === "manual"
+        ? "Part of this enrollment falls outside the verified October 2025-September 2027 tables. Your custom amount remains in use; confirm it for your enrollment period."
+        : "Part of this enrollment falls outside the verified October 2025-September 2027 tables. The nearest published rate is carried forward or backward as an estimate.";
     }
+    return settings.educationRateBasis === "manual"
+      ? "Your custom amount is preserved. Published October 2026 rates are available in MGIB rate basis. Active-duty tuition caps and non-college training require a confirmed custom amount."
+      : "Published college rates include the October 2026 increase. Partial months use a 30-day basis. Active-duty tuition caps and non-college training require a confirmed custom amount.";
   }
 
   if (settings.educationBenefit === "post911") {
@@ -3240,12 +3329,17 @@ function getEducationRateWarning(settings: Pick<ModelSettings, "educationBenefit
 }
 
 function getEducationBenefitMonthly(
-  settings: Pick<ModelSettings, "educationBenefit" | "schoolLoad" | "educationMonthlyRate">,
+  settings: Pick<ModelSettings, "educationBenefit" | "schoolLoad" | "educationMonthlyRate" | "educationRateBasis" | "schoolStartDate">,
+  earnedMonth = settings.schoolStartDate.slice(0, 7),
 ) {
   if (settings.educationBenefit === "none" || settings.schoolLoad === "none") {
     return 0;
   }
 
+  if (settings.educationBenefit === "mgib" && settings.educationRateBasis !== "manual") {
+    const factor = SCHOOL_LOAD_OPTIONS.find((option) => option.value === settings.schoolLoad)?.factor ?? 0;
+    return getMgibRate(earnedMonth, settings.educationRateBasis) * factor;
+  }
   return Math.max(0, settings.educationMonthlyRate);
 }
 
@@ -3261,7 +3355,7 @@ function getTuitionForMonth(
   monthId: MonthId,
   settings: Pick<ModelSettings, "planningMode" | "schoolLoad" | "schoolStartDate" | "schoolEndDate" | "schoolTuition">,
 ) {
-  if (settings.schoolLoad === "none") {
+  if (settings.schoolLoad === "none" || !isDateInput(settings.schoolStartDate) || !isDateInput(settings.schoolEndDate) || settings.schoolEndDate < settings.schoolStartDate) {
     return 0;
   }
 
@@ -3275,7 +3369,7 @@ function getTuitionForMonth(
 }
 
 function getPotentialBackpay(settings: ModelSettings) {
-  if (!settings.includeVaBackpay || settings.vaStart === "none") {
+  if (!settings.includeVaBackpay || !isVaTimingValid(settings)) {
     return 0;
   }
 
@@ -3298,7 +3392,7 @@ function getReserveNeeded(
 }
 
 function getAccruedVaMonths(settings: ModelSettings) {
-  if (settings.vaStart === "none") {
+  if (!isVaTimingValid(settings)) {
     return 0;
   }
 
@@ -3314,11 +3408,12 @@ function getVaDecisionMonthLabel(settings: ModelSettings) {
 }
 
 function getRecurringVaStartLabel(settings: ModelSettings) {
-  if (settings.vaStart === "none") {
+  if (!isVaTimingValid(settings)) {
     return null;
   }
 
-  return formatMonthLabel(addMonths(settings.vaStart, 1));
+  const payable = getFirstVaPayableMonth(settings);
+  return formatMonthLabel(addMonths(settings.vaStart > payable ? settings.vaStart : payable, 1));
 }
 
 function getWorkPreview(
@@ -3505,18 +3600,11 @@ function getStatus(
   return "red";
 }
 
-function getTimelineMonths(settings: Pick<ModelSettings, "timelineStartMonth">) {
+function getTimelineMonths(settings: Pick<ModelSettings, "timelineStartMonth" | "projectionMonths">) {
   const startMonth = isMonthId(settings.timelineStartMonth)
     ? settings.timelineStartMonth
     : DEFAULT_TIMELINE_START_MONTH;
-  return buildTimelineMonths(startMonth, PROJECTION_MONTH_COUNT);
-}
-
-function getTimelineMonthOptions(settings: Pick<ModelSettings, "timelineStartMonth">) {
-  return getTimelineMonths(settings).map((month) => ({
-    value: month.id,
-    label: month.label,
-  }));
+  return buildTimelineMonths(startMonth, projectionLength(settings.projectionMonths));
 }
 
 function getPostSeparationMonths(series: MonthModel[], settings: Pick<ModelSettings, "alreadySeparated" | "separationDate">) {
@@ -3528,12 +3616,15 @@ function getPostSeparationMonths(series: MonthModel[], settings: Pick<ModelSetti
   return series.filter((month) => getMonthIndex(month.id) >= getMonthIndex(separationMonth));
 }
 
-function getFirstVaPayableMonth(settings: Pick<ModelSettings, "alreadySeparated" | "separationDate" | "timelineStartMonth">) {
-  if (settings.alreadySeparated) {
-    return settings.timelineStartMonth;
-  }
+function isVaTimingValid(settings: ModelSettings) {
+  return isMonthId(settings.vaStart) && isDateInput(settings.separationDate) && settings.vaStart >= toMonthId(settings.separationDate);
+}
 
-  return addMonths(toMonthId(settings.separationDate), 1);
+function getFirstVaPayableMonth(settings: Pick<ModelSettings, "separationDate">) {
+  const separated = parseDateInput(settings.separationDate);
+  if (!separated) return addMonths(toMonthId(settings.separationDate), 1);
+  const effectiveDate = new Date(Date.UTC(separated.year, separated.month - 1, separated.day + 1));
+  return addMonths(effectiveDate.toISOString().slice(0, 7), 1);
 }
 
 function isSchoolMonth(
@@ -3546,6 +3637,7 @@ function isSchoolMonth(
 function getSchoolMonthFactor(
   monthId: MonthId,
   settings: Pick<ModelSettings, "schoolStartDate" | "schoolEndDate">,
+  thirtyDayBasis = false,
 ) {
   const startDate = parseDateInput(settings.schoolStartDate);
   const endDate = parseDateInput(settings.schoolEndDate);
@@ -3553,7 +3645,7 @@ function getSchoolMonthFactor(
   const endMonth = toMonthId(settings.schoolEndDate);
   const monthIndex = getMonthIndex(monthId);
 
-  if (!startDate || !endDate || getMonthIndex(endMonth) < getMonthIndex(startMonth)) {
+  if (!startDate || !endDate || settings.schoolEndDate < settings.schoolStartDate) {
     return 0;
   }
 
@@ -3561,18 +3653,13 @@ function getSchoolMonthFactor(
     return 0;
   }
 
-  const daysInMonth = getDaysInMonth(monthId);
-  let coveredDays = daysInMonth;
-
-  if (monthId === startMonth) {
-    coveredDays -= startDate.day - 1;
-  }
-
-  if (monthId === endMonth) {
-    coveredDays = Math.min(coveredDays, endDate.day);
-  }
-
-  return Math.max(0, Math.min(1, coveredDays / daysInMonth));
+  const calendarDays = getDaysInMonth(monthId);
+  const basis = thirtyDayBasis ? 30 : calendarDays;
+  const firstDay = monthId === startMonth ? Math.min(startDate.day, basis) : 1;
+  const lastDay = monthId === endMonth
+    ? (endDate.day === calendarDays ? basis : Math.min(endDate.day, basis))
+    : basis;
+  return Math.max(0, Math.min(1, (lastDay - firstDay + 1) / basis));
 }
 
 function getSchoolTermMonths(settings: Pick<ModelSettings, "schoolStartDate" | "schoolEndDate">) {
@@ -3636,11 +3723,11 @@ function toMonthId(dateInput: string) {
 }
 
 function isMonthId(value: unknown): value is MonthId {
-  return typeof value === "string" && /^\d{4}-\d{2}$/.test(value);
+  return isCalendarMonth(value);
 }
 
 function isDateInput(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return isCalendarDate(value);
 }
 
 function parseDateInput(value: string) {
@@ -3712,6 +3799,8 @@ export {
   getReserveNeeded,
   getVaMonthly,
   getWorkPreview,
+  normalizePlannerState,
+  buildScenarioRows,
 };
 
 export default App;

@@ -1,4 +1,5 @@
 import { BENEFIT_RATE_DATASETS } from "./benefitRates";
+import { OUTSIDE_EMPLOYMENT_SOURCE } from "../planningDates";
 
 export const RATE_SOURCE_LINKS = BENEFIT_RATE_DATASETS.map((dataset) => ({
   label: dataset.sourceLabel,
@@ -6,6 +7,11 @@ export const RATE_SOURCE_LINKS = BENEFIT_RATE_DATASETS.map((dataset) => ({
 }));
 
 export const PLANNING_SOURCE_LINKS = [
+  { label: "DoD outside employment and terminal-leave ethics", href: OUTSIDE_EMPLOYMENT_SOURCE },
+  {
+    label: "38 CFR 3.31: compensation payment commencement",
+    href: "https://www.govinfo.gov/content/pkg/CFR-2025-title38-vol1/pdf/CFR-2025-title38-vol1-sec3-31.pdf",
+  },
   {
     label: "VA disability effective dates",
     href: "https://www.va.gov/disability/effective-date/",
