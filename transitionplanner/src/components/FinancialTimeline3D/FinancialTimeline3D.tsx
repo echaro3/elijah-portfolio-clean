@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Box, PanelTop, Layers, Focus, Play, Pause, RotateCcw, ZoomIn, ZoomOut, MousePointer2 } from "lucide-react";
 import type { IncomeKey, MonthId, MonthModel, ModelSettings } from "../../App";
 import { getExpenseTargets } from "../../plannerModel";
 import { FinancialTimelineScene } from "./TimelineScene";
@@ -22,6 +23,7 @@ type FinancialTimeline3DProps = {
   hoveredMonth: MonthId | null;
   onMonthFocus: (monthId: MonthId | null) => void;
   reducedMotion: boolean;
+  onStandardView: () => void;
 };
 
 export default function FinancialTimeline3D({
@@ -30,6 +32,7 @@ export default function FinancialTimeline3D({
   hoveredMonth,
   onMonthFocus,
   reducedMotion,
+  onStandardView,
 }: FinancialTimeline3DProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const stageRef = React.useRef<HTMLDivElement | null>(null);
@@ -42,13 +45,15 @@ export default function FinancialTimeline3D({
   const [selectedMonth, setSelectedMonth] = React.useState<MonthId | null>(null);
   const [requiresTouchActivation, setRequiresTouchActivation] = React.useState(false);
   const [touchControlsActive, setTouchControlsActive] = React.useState(false);
+  const [cameraPreset, setCamera] = React.useState<CameraPreset>("perspective");
+  const [autoRotate, setAutoRotate] = React.useState(false);
 
   const targets = React.useMemo(() => getExpenseTargets(settings), [settings]);
   const thresholdValue = targets[threshold];
   const events = React.useMemo(() => buildTimelineEvents(series, settings), [series, settings]);
   const activeMonth =
-    series.find((month) => month.id === selectedMonth) ??
     series.find((month) => month.id === hoveredMonth) ??
+    series.find((month) => month.id === selectedMonth) ??
     series.find((month) => month.status === "red") ??
     series[0];
   const controlsEnabled = !requiresTouchActivation || touchControlsActive;
@@ -76,17 +81,13 @@ export default function FinancialTimeline3D({
       return undefined;
     }
 
-    if (!hasWebGL()) {
-      setRendererStatus("unavailable");
-      return undefined;
-    }
-
     try {
       const scene = new FinancialTimelineScene({
         canvas: canvasRef.current,
         container: stageRef.current,
         onHoverMonth: onMonthFocus,
         onSelectMonth: setSelectedMonth,
+        onUnavailable: () => setRendererStatus("unavailable"),
       });
       sceneRef.current = scene;
       setRendererStatus("ready");
@@ -125,19 +126,33 @@ export default function FinancialTimeline3D({
     sceneRef.current?.setControlsEnabled(controlsEnabled);
   }, [controlsEnabled]);
 
+  React.useEffect(() => {
+    sceneRef.current?.setAutoRotate(autoRotate && !reducedMotion);
+  }, [autoRotate, reducedMotion]);
+
+  React.useEffect(() => {
+    if (rendererStatus === "unavailable") {
+      sceneRef.current?.dispose();
+      sceneRef.current = null;
+    }
+  }, [rendererStatus]);
+
   const chooseMonth = (monthId: MonthId) => {
     setSelectedMonth(monthId);
     onMonthFocus(monthId);
   };
 
   const setCameraPreset = (preset: CameraPreset) => {
+    setCamera(preset);
+    setAutoRotate(false);
     sceneRef.current?.setCameraPreset(preset);
   };
 
   if (rendererStatus === "unavailable") {
     return (
       <div className="timeline-3d-fallback" role="status">
-        3D analysis unavailable on this device. Standard visualization remains active.
+        3D rendering is unavailable on this device.
+        <button type="button" className="section-toggle" onClick={onStandardView}>Open standard chart</button>
       </div>
     );
   }
@@ -163,18 +178,19 @@ export default function FinancialTimeline3D({
         <div>
           <span>Camera</span>
           <div className="timeline-3d-camera-controls" role="group" aria-label="Camera presets">
-            <button type="button" onClick={() => setCameraPreset("perspective")}>
-              Perspective
-            </button>
-            <button type="button" onClick={() => setCameraPreset("front")}>
-              Front
-            </button>
-            <button type="button" onClick={() => setCameraPreset("top")}>
-              Top
-            </button>
-            <button type="button" onClick={() => setCameraPreset("risk")}>
-              Risk window
-            </button>
+            {([
+              ["perspective", "Perspective", Box], ["front", "Front", PanelTop],
+              ["top", "Top", Layers], ["risk", "Risk window", Focus],
+            ] as const).map(([preset, label, Icon]) => <button key={preset} type="button" title={label} aria-label={label} aria-pressed={cameraPreset === preset} onClick={() => setCameraPreset(preset)}><Icon aria-hidden="true" /></button>)}
+          </div>
+        </div>
+        <div>
+          <span>Explore</span>
+          <div className="timeline-3d-camera-controls" role="group" aria-label="Scene navigation">
+            <button type="button" title="Zoom in" aria-label="Zoom in" onClick={() => sceneRef.current?.zoom(1)}><ZoomIn /></button>
+            <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => sceneRef.current?.zoom(-1)}><ZoomOut /></button>
+            <button type="button" title={autoRotate ? "Pause orbit" : "Orbit scene"} aria-label={autoRotate ? "Pause orbit" : "Orbit scene"} aria-pressed={autoRotate} disabled={reducedMotion} onClick={() => setAutoRotate(current => !current)}>{autoRotate ? <Pause /> : <Play />}</button>
+            <button type="button" title="Reset camera" aria-label="Reset camera" onClick={() => setCameraPreset("perspective")}><RotateCcw /></button>
           </div>
         </div>
       </div>
@@ -182,15 +198,15 @@ export default function FinancialTimeline3D({
       <div className="timeline-3d-legend" aria-label="3D financial timeline legend">
         <span>
           <i className="is-gross" aria-hidden="true" />
-          Tower = gross resources
+          Gross resources
         </span>
         <span>
           <i className="is-net" aria-hidden="true" />
-          Net line = after tuition
+          After tuition
         </span>
         <span>
           <i className="is-plane" aria-hidden="true" />
-          Plane = selected target
+          {getThresholdLabel(threshold)} target
         </span>
       </div>
 
@@ -216,7 +232,7 @@ export default function FinancialTimeline3D({
                 onClick={() => setTouchControlsActive((current) => !current)}
                 aria-pressed={touchControlsActive}
               >
-                {touchControlsActive ? "Release controls" : "Enable 3D controls"}
+                <MousePointer2 aria-hidden="true" /> {touchControlsActive ? "Done exploring" : "Explore 3D"}
               </button>
             </div>
           ) : null}
@@ -268,7 +284,7 @@ export default function FinancialTimeline3D({
               onFocus={() => onMonthFocus(month.id)}
               onBlur={() => onMonthFocus(null)}
             >
-              {month.short}
+              {month.short}{series.length > 12 ? ` '${month.id.slice(2, 4)}` : ""}
             </button>
           ))}
         </div>
@@ -356,8 +372,8 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
   }
 
   if (settings.workType === "contract") {
-    if (eventMonths.has(settings.contractEnd)) {
-      events.push({ id: "contract-end", monthId: settings.contractEnd, label: "Contract end", kind: "work" });
+    if (eventMonths.has(settings.contractEndDate.slice(0, 7))) {
+      events.push({ id: "contract-end", monthId: settings.contractEndDate.slice(0, 7), label: "Contract end", kind: "work" });
     }
   }
 
@@ -387,11 +403,10 @@ function buildTimelineEvents(series: MonthModel[], settings: ModelSettings): Tim
   const firstEducation = series.find((month) => month.streams.education > 0);
   if (firstEducation) {
     const educationLabel = getEducationEventLabel(settings.educationBenefit);
-    const firstEducationIsProrated = firstEducation.streams.education < Math.max(0, settings.educationMonthlyRate);
     events.push({
       id: "education",
       monthId: firstEducation.id,
-      label: firstEducationIsProrated ? `${educationLabel} prorate` : educationLabel,
+      label: educationLabel,
       kind: "school",
     });
   }
@@ -445,23 +460,14 @@ function getThresholdLabel(threshold: Timeline3DThreshold) {
 
 function getStatusLabel(status: MonthModel["status"]) {
   if (status === "red") {
-    return "Danger";
+    return "Below essential expenses";
   }
 
   if (status === "yellow") {
-    return "Tight";
+    return "Essentials covered";
   }
 
-  return "Stable";
-}
-
-function hasWebGL() {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-  } catch {
-    return false;
-  }
+  return "Within budget";
 }
 
 function formatMoney(value: number) {

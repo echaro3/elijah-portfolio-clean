@@ -1,1116 +1,473 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { IncomeKey, MonthId, MonthModel } from "../../App";
 import { STREAM_VISUALS, TIMELINE_STREAMS, type CameraPreset, type Timeline3DEvent } from "./types";
+import { MAX_PROJECTION_MONTHS } from "../../planningDates";
 
-const VALUE_UNIT = 1500;
-const BAR_WIDTH = 0.56;
-const BAR_DEPTH = 0.68;
-const MONTH_STEP = 1.18;
-const MIN_HEIGHT = 0.015;
-const NET_MARKER_HEIGHT = 0.032;
-const SCENE_DEPTH = 3.2;
-const TRANSITION_SECONDS = 0.68;
-const TRANSITION_SETTLE_FRAMES = 54;
-const INTERACTION_SETTLE_FRAMES = 18;
-const RESIZE_SETTLE_FRAMES = 8;
-
-type SegmentHandle = {
-  mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhysicalMaterial>;
-  stream: IncomeKey;
-  monthId: MonthId;
-  currentHeight: number;
-  targetHeight: number;
-  currentY: number;
-  targetY: number;
-  currentOpacity: number;
-  targetOpacity: number;
-};
-
-type TuitionHandle = {
-  mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhysicalMaterial>;
-  currentHeight: number;
-  targetHeight: number;
-  currentY: number;
-  targetY: number;
-  currentOpacity: number;
-  targetOpacity: number;
-};
-
-type NetMarkerHandle = {
-  mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
-  currentY: number;
-  targetY: number;
-  currentOpacity: number;
-  targetOpacity: number;
-  currentScaleX: number;
-  targetScaleX: number;
-  targetColor: THREE.Color;
-};
-
-type MonthHandle = {
-  id: MonthId;
-  x: number;
-  root: THREE.Group;
-  base: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
-  hitbox: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
-  label: THREE.Sprite;
-  segments: Map<IncomeKey, SegmentHandle>;
-  tuition: TuitionHandle;
-  depletion: TuitionHandle;
-  netMarker: NetMarkerHandle;
-};
-
-type CameraMove = {
-  start: number;
-  duration: number;
-  fromPosition: THREE.Vector3;
-  toPosition: THREE.Vector3;
-  fromTarget: THREE.Vector3;
-  toTarget: THREE.Vector3;
-};
-
-export type TimelineSceneUpdate = {
-  series: MonthModel[];
-  thresholdLabel: string;
-  thresholdValue: number;
-  activeStream: IncomeKey | null;
-  selectedMonth: MonthId | null;
-  hoveredMonth: MonthId | null;
-  events: Timeline3DEvent[];
-  reducedMotion: boolean;
-};
-
-export type TimelineSceneInteractionUpdate = {
-  activeStream: IncomeKey | null;
-  selectedMonth: MonthId | null;
-  hoveredMonth: MonthId | null;
-};
-
-export type FinancialTimelineSceneOptions = {
+const STEP = 1.12;
+const WIDTH = .58;
+const DEPTH = .72;
+const MAX_MONTHS = MAX_PROJECTION_MONTHS;
+type Segment = { month: number; stream: IncomeKey; height: number; target: number; color: THREE.Color };
+type Interaction = { activeStream: IncomeKey | null; selectedMonth: MonthId | null; hoveredMonth: MonthId | null };
+type Options = {
   canvas: HTMLCanvasElement;
   container: HTMLElement;
-  onHoverMonth: (monthId: MonthId | null) => void;
-  onSelectMonth: (monthId: MonthId) => void;
+  onHoverMonth: (month: MonthId | null) => void;
+  onSelectMonth: (month: MonthId) => void;
+  onUnavailable?: () => void;
 };
 
-export class FinancialTimelineScene {
-  private readonly canvas: HTMLCanvasElement;
-  private readonly container: HTMLElement;
-  private readonly renderer: THREE.WebGLRenderer;
-  private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-  private readonly controls: OrbitControls;
-  private readonly raycaster = new THREE.Raycaster();
-  private readonly pointer = new THREE.Vector2();
-  private readonly clock = new THREE.Clock();
-  private readonly monthGroup = new THREE.Group();
-  private readonly gridGroup = new THREE.Group();
-  private readonly eventGroup = new THREE.Group();
-  private readonly floorGroup = new THREE.Group();
-  private readonly months = new Map<MonthId, MonthHandle>();
-  private readonly handleControlsStart = () => this.requestRender(TRANSITION_SETTLE_FRAMES);
-  private readonly handleControlsChange = () => this.requestRender(INTERACTION_SETTLE_FRAMES);
-  private readonly handleControlsEnd = () => this.requestRender(INTERACTION_SETTLE_FRAMES);
-  private readonly onHoverMonth: (monthId: MonthId | null) => void;
-  private readonly onSelectMonth: (monthId: MonthId) => void;
-  private resizeObserver: ResizeObserver | null = null;
-  private intersectionObserver: IntersectionObserver | null = null;
-  private frameId: number | null = null;
-  private framesRemaining = 0;
-  private hoveredMonth: MonthId | null = null;
-  private selectedMonth: MonthId | null = null;
-  private activeStream: IncomeKey | null = null;
-  private series: MonthModel[] = [];
-  private maxValue = 8000;
-  private thresholdValue = 0;
-  private thresholdLabel = "Essential";
-  private reducedMotion = false;
-  private floorPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-  private floorLine: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>;
-  private floorLabel: THREE.Sprite;
-  private cameraMove: CameraMove | null = null;
-  private controlsEnabled = true;
-  private isSceneVisible = true;
-  private isPageVisible = document.visibilityState !== "hidden";
-  private gridSignature = "";
-  private floorSignature = "";
-  private eventSignature = "";
-
-  constructor({ canvas, container, onHoverMonth, onSelectMonth }: FinancialTimelineSceneOptions) {
-    this.canvas = canvas;
-    this.container = container;
-    this.onHoverMonth = onHoverMonth;
-    this.onSelectMonth = onSelectMonth;
-
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      alpha: true,
-      antialias: true,
-      powerPreference: "default",
-      preserveDrawingBuffer: false,
-    });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.08;
-    this.controls.minDistance = 6.4;
-    this.controls.maxDistance = 21;
-    this.controls.minPolarAngle = 0.2;
-    this.controls.maxPolarAngle = Math.PI * 0.49;
-    this.controls.enablePan = true;
-    this.controls.screenSpacePanning = false;
-    this.controls.target.set(0, 2.4, 0);
-    this.controls.addEventListener("start", this.handleControlsStart);
-    this.controls.addEventListener("change", this.handleControlsChange);
-    this.controls.addEventListener("end", this.handleControlsEnd);
-
-    this.floorPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
-        color: 0x4cefff,
-        transparent: true,
-        opacity: 0.11,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    );
-    this.floorPlane.rotation.x = -Math.PI / 2;
-
-    this.floorLine = new THREE.LineSegments(
-      new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({
-        color: 0x4cefff,
-        transparent: true,
-        opacity: 0.52,
-      }),
-    );
-
-    this.floorLabel = createTextSprite("ESSENTIAL FLOOR", {
-      color: "#dff9ff",
-      accent: "#4cefff",
-      fontSize: 32,
-      width: 520,
-      height: 120,
-    });
-
-    this.configureScene();
-    this.setCameraPreset("perspective", true);
-    this.resize();
-
-    this.canvas.addEventListener("pointermove", this.handlePointerMove);
-    this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
-    this.canvas.addEventListener("click", this.handleClick);
-
-    this.resizeObserver = new ResizeObserver(() => {
-      this.resize();
-      this.requestRender(RESIZE_SETTLE_FRAMES);
-    });
-    this.resizeObserver.observe(this.container);
-
-    if ("IntersectionObserver" in window) {
-      this.intersectionObserver = new IntersectionObserver(
-        ([entry]) => {
-          this.isSceneVisible = entry?.isIntersecting ?? true;
-          if (this.isSceneVisible) {
-            this.requestRender(TRANSITION_SETTLE_FRAMES);
-          }
-        },
-        { threshold: 0.08 },
-      );
-      this.intersectionObserver.observe(this.container);
-    }
-
-    document.addEventListener("visibilitychange", this.handleVisibilityChange);
-    this.requestRender(TRANSITION_SETTLE_FRAMES);
+// All income segments share one geometry and shader: one draw call, no transmission passes.
+const COLUMN_VERTEX = `
+  varying vec3 vLocal;
+  varying vec3 vNormal;
+  varying vec3 vWorld;
+  varying vec3 vColor;
+  void main() {
+    vLocal = position;
+    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    vWorld = world.xyz;
+    vNormal = normalize(mat3(modelMatrix * instanceMatrix) * normal);
+    vColor = instanceColor;
+    gl_Position = projectionMatrix * viewMatrix * world;
   }
+`;
+const COLUMN_FRAGMENT = `
+  varying vec3 vLocal;
+  varying vec3 vNormal;
+  varying vec3 vWorld;
+  varying vec3 vColor;
+  void main() {
+    vec3 n = normalize(vNormal);
+    vec3 viewDirection = normalize(cameraPosition - vWorld);
+    float fresnel = pow(1.0 - abs(dot(n, viewDirection)), 2.0);
+    vec3 face = abs(vLocal);
+    float edge = min(min(max(face.x, face.y), max(face.y, face.z)), max(face.x, face.z));
+    float outline = smoothstep(.475, .499, edge);
+    float light = .3 + .4 * max(dot(n, normalize(vec3(-.5, 1., .8))), 0.);
+    float bands = .97 + .03 * cos(vWorld.y * 65.);
+    vec3 color = vColor * (light + fresnel * .24) * bands;
+    color = mix(color, vColor * 1.15 + vec3(.1), outline * .8);
+    gl_FragColor = vec4(color, 1.);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
 
-  update(update: TimelineSceneUpdate) {
-    this.setReducedMotion(update.reducedMotion);
-    this.setFinancialData(update.series);
-    this.setThreshold(update.thresholdLabel, update.thresholdValue);
-    this.setEvents(update.events);
-    this.setInteractionState({
-      activeStream: update.activeStream,
-      selectedMonth: update.selectedMonth,
-      hoveredMonth: update.hoveredMonth,
-    });
+export class FinancialTimelineScene {
+  private renderer: THREE.WebGLRenderer;
+  private scene = new THREE.Scene();
+  private camera = new THREE.PerspectiveCamera(38, 1, .1, 1000);
+  private controls: OrbitControls;
+  private columns: THREE.InstancedMesh;
+  private nodes: THREE.InstancedMesh;
+  private bases: THREE.InstancedMesh;
+  private deductions: THREE.InstancedMesh;
+  private labels = new THREE.Group();
+  private grid = new THREE.Group();
+  private eventsGroup = new THREE.Group();
+  private reference = new THREE.Group();
+  private trace: Line2;
+  private focus: THREE.LineSegments;
+  private frame: number | null = null;
+  private disposed = false;
+  private visible = true;
+  private pageVisible = document.visibilityState !== "hidden";
+  private reduced = false;
+  private autoRotate = false;
+  private enabled = true;
+  private lastFrame = 0;
+  private scale = 1500;
+  private series: MonthModel[] = [];
+  private segments: Segment[] = [];
+  private events: Timeline3DEvent[] = [];
+  private state: Interaction = { activeStream: null, selectedMonth: null, hoveredMonth: null };
+  private threshold = 3200;
+  private thresholdLabel = "Essential";
+  private preset: CameraPreset = "perspective";
+  private cameraMove: { start: number; from: THREE.Vector3; to: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | null = null;
+  private resizeObserver: ResizeObserver;
+  private intersectionObserver: IntersectionObserver;
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
+  private down: { x: number; y: number } | null = null;
+  private dummy = new THREE.Object3D();
+  private color = new THREE.Color();
+  private netHeights: number[] = [];
+
+  constructor(private options: Options) {
+    this.renderer = new THREE.WebGLRenderer({ canvas: options.canvas, antialias: true, alpha: false, powerPreference: "low-power" });
+    this.renderer.setClearColor(0x0c100e);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.columns = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.ShaderMaterial({ vertexShader: COLUMN_VERTEX, fragmentShader: COLUMN_FRAGMENT }), MAX_MONTHS * TIMELINE_STREAMS.length);
+    this.columns.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.columns.frustumCulled = false;
+    this.columns.count = 0;
+    this.nodes = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.045, 1), new THREE.MeshBasicMaterial({ color: 0xd2ffe7 }), MAX_MONTHS);
+    this.bases = new THREE.InstancedMesh(new THREE.BoxGeometry(.84, .028, 1.04), new THREE.MeshBasicMaterial(), MAX_MONTHS);
+    this.deductions = new THREE.InstancedMesh(new THREE.BoxGeometry(.18, 1, .18), new THREE.MeshBasicMaterial({ color: 0xbe707c }), MAX_MONTHS);
+    for (const mesh of [this.nodes, this.bases, this.deductions]) { mesh.frustumCulled = false; mesh.count = 0; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); }
+    this.trace = new Line2(new LineGeometry(), new LineMaterial({ color: 0xc5f5df, linewidth: 2, transparent: true, opacity: .9, depthTest: true }));
+    this.trace.frustumCulled = false;
+    this.focus = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xe3fff0, transparent: true, opacity: .8 }));
+    this.focus.visible = false;
+    this.scene.add(this.columns, this.nodes, this.bases, this.deductions, this.labels, this.grid, this.eventsGroup, this.reference, this.trace, this.focus);
+    this.controls = new OrbitControls(this.camera, options.canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = .1;
+    this.controls.minPolarAngle = .08;
+    this.controls.maxPolarAngle = Math.PI * .48;
+    this.controls.minDistance = 4;
+    this.controls.maxDistance = 320;
+    this.controls.enablePan = false;
+    // Wheel scrolling belongs to the page. Dedicated zoom buttons work on every device.
+    this.controls.enableZoom = false;
+    this.controls.autoRotateSpeed = .55;
+    this.controls.addEventListener("change", this.requestRender);
+    this.controls.addEventListener("start", this.cancelCameraMove);
+    options.canvas.addEventListener("pointermove", this.handleMove);
+    options.canvas.addEventListener("pointerleave", this.handleLeave);
+    options.canvas.addEventListener("pointerdown", this.handleDown);
+    options.canvas.addEventListener("pointerup", this.handleUp);
+    options.canvas.addEventListener("webglcontextlost", this.handleContextLost);
+    document.addEventListener("visibilitychange", this.handleVisibility);
+    this.resizeObserver = new ResizeObserver(this.resize);
+    this.resizeObserver.observe(options.container);
+    this.intersectionObserver = new IntersectionObserver(([entry]) => {
+      this.visible = entry.isIntersecting;
+      if (this.visible) this.requestRender();
+    }, { threshold: .01 });
+    this.intersectionObserver.observe(options.container);
+    this.resize();
   }
 
   setFinancialData(series: MonthModel[]) {
-    this.series = series;
-    this.maxValue = Math.max(
-      6500,
-      this.thresholdValue,
-      ...series.map((month) => Math.max(month.total, month.tuition)),
-    ) * 1.12;
-
-    this.ensureMonths(series);
-    this.updateGrid();
-    this.updateFloor();
-    this.updateMonthTargets();
-    this.requestRender(TRANSITION_SETTLE_FRAMES);
+    const datesChanged = this.series.map(m => m.id).join() !== series.map(m => m.id).join();
+    this.series = series.slice(0, MAX_MONTHS);
+    this.scale = Math.max(1000, this.threshold, ...series.map(m => Math.max(m.total, m.tuition))) / 5;
+    const previous = this.segments;
+    this.segments = this.series.flatMap((month, index) => TIMELINE_STREAMS.map((stream, j) => ({
+      month: index, stream, target: Math.max(0, month.streams[stream]) / this.scale,
+      height: datesChanged ? 0 : previous[index * TIMELINE_STREAMS.length + j]?.height ?? 0,
+      color: new THREE.Color(STREAM_VISUALS[stream].color),
+    })));
+    this.columns.count = this.segments.length;
+    this.nodes.count = this.bases.count = this.deductions.count = series.length;
+    this.netHeights = this.series.map((m, i) => datesChanged ? 0 : this.netHeights[i] ?? 0);
+    this.rebuildGrid();
+    this.rebuildReference();
+    this.rebuildEvents();
+    if (datesChanged) {
+      clearGroup(this.labels);
+      this.series.forEach((month, i) => {
+        const label = textSprite(month.short, "#b8c8be", .56);
+        label.position.set(this.x(i), -.2, .87);
+        this.labels.add(label);
+      });
+    }
+    this.setCameraPreset(this.preset, true);
+    this.requestRender();
   }
 
-  setThreshold(thresholdLabel: string, thresholdValue: number) {
-    if (this.thresholdLabel === thresholdLabel && this.thresholdValue === thresholdValue) {
-      return;
-    }
-
-    this.thresholdLabel = thresholdLabel;
-    this.thresholdValue = thresholdValue;
-    this.maxValue = Math.max(
-      6500,
-      this.thresholdValue,
-      ...this.series.map((month) => Math.max(month.total, month.tuition)),
-    ) * 1.12;
-    this.updateGrid();
-    this.updateFloor();
-    this.updateMonthTargets();
-    this.requestRender(TRANSITION_SETTLE_FRAMES);
+  setThreshold(label: string, value: number) {
+    if (this.threshold === value && this.thresholdLabel === label) return;
+    this.threshold = value;
+    this.thresholdLabel = label;
+    this.setFinancialData(this.series);
   }
-
-  setEvents(events: Timeline3DEvent[]) {
-    const nextSignature = events
-      .map((event) => `${event.id}:${event.monthId}:${event.label}:${event.kind}`)
-      .join("|");
-    if (nextSignature === this.eventSignature) {
-      return;
-    }
-
-    this.eventSignature = nextSignature;
-    this.updateEvents(events);
-    this.requestRender(TRANSITION_SETTLE_FRAMES);
+  setEvents(events: Timeline3DEvent[]) { this.events = events; this.rebuildEvents(); this.requestRender(); }
+  setInteractionState(state: Interaction) { this.state = state; this.requestRender(); }
+  setReducedMotion(value: boolean) { this.reduced = value; this.controls.enableDamping = !value; this.controls.autoRotate = this.autoRotate && !value; this.requestRender(); }
+  setControlsEnabled(value: boolean) {
+    this.enabled = value;
+    this.controls.enabled = value;
+    this.options.canvas.style.cursor = value ? "grab" : "auto";
+    this.options.canvas.style.touchAction = value ? "none" : "pan-y";
   }
-
-  setInteractionState(update: TimelineSceneInteractionUpdate) {
-    if (
-      this.activeStream === update.activeStream &&
-      this.selectedMonth === update.selectedMonth &&
-      this.hoveredMonth === update.hoveredMonth
-    ) {
-      return;
-    }
-
-    this.activeStream = update.activeStream;
-    this.selectedMonth = update.selectedMonth;
-    this.hoveredMonth = update.hoveredMonth;
-    this.updateMonthTargets();
-    this.requestRender(INTERACTION_SETTLE_FRAMES);
-  }
-
-  setReducedMotion(reducedMotion: boolean) {
-    if (this.reducedMotion === reducedMotion) {
-      return;
-    }
-
-    this.reducedMotion = reducedMotion;
-    this.requestRender(TRANSITION_SETTLE_FRAMES);
-  }
-
-  setControlsEnabled(enabled: boolean) {
-    if (this.controlsEnabled === enabled) {
-      return;
-    }
-
-    this.controlsEnabled = enabled;
-    this.controls.enabled = enabled;
-    this.canvas.style.cursor = enabled ? "grab" : "default";
-    if (!enabled && this.hoveredMonth !== null) {
-      this.hoveredMonth = null;
-      this.onHoverMonth(null);
-      this.updateMonthTargets();
-    }
-    this.requestRender(INTERACTION_SETTLE_FRAMES);
+  setAutoRotate(value: boolean) { this.autoRotate = value; this.controls.autoRotate = value && !this.reduced; this.requestRender(); }
+  zoom(direction: number) {
+    this.cameraMove = null;
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    offset.setLength(THREE.MathUtils.clamp(offset.length() * (direction > 0 ? .82 : 1.22), 4, 320));
+    this.camera.position.copy(this.controls.target).add(offset);
+    this.controls.update();
+    this.requestRender();
   }
 
   setCameraPreset(preset: CameraPreset, immediate = false) {
-    const riskMonths = this.series
-      .map((month, index) => ({ month, index }))
-      .filter(({ month }) => month.status === "red");
-    const centerIndex =
-      preset === "risk" && riskMonths.length > 0
-        ? riskMonths.reduce((sum, item) => sum + item.index, 0) / riskMonths.length
-        : (Math.max(1, this.series.length) - 1) / 2;
-    const centerX = getMonthX(centerIndex, Math.max(1, this.series.length));
-    const target = new THREE.Vector3(centerX, preset === "top" ? 0.4 : 2.25, 0);
-    let position = new THREE.Vector3(centerX + 6.8, 6.2, 9.4);
-
-    if (preset === "front") {
-      position = new THREE.Vector3(centerX, 4.2, 12.8);
-    }
-
-    if (preset === "top") {
-      position = new THREE.Vector3(centerX, 14.4, 0.32);
-    }
-
-    if (preset === "risk") {
-      position = new THREE.Vector3(centerX + 3.6, 5.3, 7.2);
-    }
-
-    this.moveCamera(position, target, immediate || this.reducedMotion);
-  }
-
-  dispose() {
-    if (this.frameId !== null) {
-      cancelAnimationFrame(this.frameId);
-      this.frameId = null;
-    }
-    this.canvas.removeEventListener("pointermove", this.handlePointerMove);
-    this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
-    this.canvas.removeEventListener("click", this.handleClick);
-    this.resizeObserver?.disconnect();
-    this.intersectionObserver?.disconnect();
-    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
-    this.controls.removeEventListener("start", this.handleControlsStart);
-    this.controls.removeEventListener("change", this.handleControlsChange);
-    this.controls.removeEventListener("end", this.handleControlsEnd);
-    this.controls.dispose();
-    disposeObject(this.scene);
-    this.renderer.dispose();
-  }
-
-  private configureScene() {
-    this.scene.fog = new THREE.FogExp2(0x06111f, 0.045);
-    this.scene.add(this.gridGroup);
-    this.scene.add(this.monthGroup);
-    this.scene.add(this.floorGroup);
-    this.scene.add(this.eventGroup);
-    this.floorGroup.add(this.floorPlane, this.floorLine, this.floorLabel);
-
-    const ambient = new THREE.AmbientLight(0x9ddcff, 0.52);
-    const key = new THREE.DirectionalLight(0xdff8ff, 1.6);
-    key.position.set(4, 9, 7);
-    const rim = new THREE.PointLight(0x4cefff, 2.8, 28);
-    rim.position.set(-5, 3.5, 4.5);
-    const warning = new THREE.PointLight(0xff6572, 1.2, 16);
-    warning.position.set(1.5, 1.4, -2.8);
-    this.scene.add(ambient, key, rim, warning);
-  }
-
-  private ensureMonths(series: MonthModel[]) {
-    if (this.months.size === series.length) {
-      return;
-    }
-
-    disposeObject(this.monthGroup);
-    this.monthGroup.clear();
-    this.months.clear();
-
-    series.forEach((month, index) => {
-      const root = new THREE.Group();
-      const x = getMonthX(index, series.length);
-      root.position.x = x;
-
-      const baseMaterial = new THREE.MeshStandardMaterial({
-        color: 0x12334b,
-        emissive: 0x04111f,
-        emissiveIntensity: 0.5,
-        roughness: 0.42,
-        metalness: 0.2,
-      });
-      const base = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.08, 0.96), baseMaterial);
-      base.position.set(0, -0.055, 0);
-
-      const hitbox = new THREE.Mesh(
-        new THREE.BoxGeometry(0.96, 9, 1.28),
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-      );
-      hitbox.position.set(0, 4, 0);
-      hitbox.userData.monthId = month.id;
-
-      const label = createTextSprite(month.short.toUpperCase(), {
-        color: "#dff9ff",
-        accent: "#7ed6f6",
-        fontSize: 38,
-        width: 260,
-        height: 110,
-      });
-      label.position.set(0, -0.08, 1.03);
-      label.scale.set(0.78, 0.33, 1);
-
-      const segments = new Map<IncomeKey, SegmentHandle>();
-      let initialY = 0;
-      TIMELINE_STREAMS.forEach((stream) => {
-        const visual = STREAM_VISUALS[stream];
-        const material = new THREE.MeshPhysicalMaterial({
-          color: visual.color,
-          emissive: visual.emissive,
-          emissiveIntensity: stream === "vaBackpay" ? 0.55 : 0.34,
-          transparent: true,
-          opacity: 0.06,
-          roughness: 0.16,
-          metalness: 0.08,
-          transmission: 0.08,
-          thickness: 0.22,
-          depthWrite: false,
-        });
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
-        mesh.scale.set(BAR_WIDTH, MIN_HEIGHT, BAR_DEPTH);
-        mesh.position.set(0, initialY + MIN_HEIGHT / 2, 0);
-        mesh.userData.monthId = month.id;
-        mesh.userData.stream = stream;
-        root.add(mesh);
-        segments.set(stream, {
-          mesh,
-          stream,
-          monthId: month.id,
-          currentHeight: MIN_HEIGHT,
-          targetHeight: MIN_HEIGHT,
-          currentY: mesh.position.y,
-          targetY: mesh.position.y,
-          currentOpacity: 0.06,
-          targetOpacity: 0.06,
-        });
-        initialY += MIN_HEIGHT;
-      });
-
-      const tuitionMaterial = new THREE.MeshPhysicalMaterial({
-        color: 0xff6572,
-        emissive: 0x7a1020,
-        emissiveIntensity: 0.45,
-        transparent: true,
-        opacity: 0.08,
-        roughness: 0.18,
-        metalness: 0.05,
-        depthWrite: false,
-      });
-      const tuitionMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), tuitionMaterial);
-      tuitionMesh.scale.set(BAR_WIDTH * 0.68, MIN_HEIGHT, 0.16);
-      tuitionMesh.position.set(0, -MIN_HEIGHT / 2, 0.58);
-      const tuition: TuitionHandle = {
-        mesh: tuitionMesh,
-        currentHeight: MIN_HEIGHT,
-        targetHeight: MIN_HEIGHT,
-        currentY: tuitionMesh.position.y,
-        targetY: tuitionMesh.position.y,
-        currentOpacity: 0.08,
-        targetOpacity: 0.08,
-      };
-
-      const depletionMaterial = new THREE.MeshPhysicalMaterial({
-        color: 0xff6572,
-        emissive: 0xff6572,
-        emissiveIntensity: 0.35,
-        transparent: true,
-        opacity: 0.03,
-        roughness: 0.18,
-        metalness: 0.04,
-        depthWrite: false,
-        depthTest: false,
-      });
-      const depletionMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), depletionMaterial);
-      depletionMesh.renderOrder = 22;
-      depletionMesh.scale.set(BAR_WIDTH * 1.08, MIN_HEIGHT, BAR_DEPTH * 1.12);
-      depletionMesh.position.set(0, MIN_HEIGHT / 2, 0.02);
-      const depletion: TuitionHandle = {
-        mesh: depletionMesh,
-        currentHeight: MIN_HEIGHT,
-        targetHeight: MIN_HEIGHT,
-        currentY: depletionMesh.position.y,
-        targetY: depletionMesh.position.y,
-        currentOpacity: 0.03,
-        targetOpacity: 0.03,
-      };
-
-      const netMarkerMaterial = new THREE.MeshBasicMaterial({
-        color: 0x4cefff,
-        transparent: true,
-        opacity: 0.1,
-        depthWrite: false,
-        depthTest: false,
-      });
-      const netMarkerMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), netMarkerMaterial);
-      netMarkerMesh.renderOrder = 30;
-      netMarkerMesh.scale.set(BAR_WIDTH * 1.28, NET_MARKER_HEIGHT, BAR_DEPTH * 1.18);
-      netMarkerMesh.position.set(0, NET_MARKER_HEIGHT / 2, 0.01);
-      const netMarker: NetMarkerHandle = {
-        mesh: netMarkerMesh,
-        currentY: netMarkerMesh.position.y,
-        targetY: netMarkerMesh.position.y,
-        currentOpacity: 0.1,
-        targetOpacity: 0.1,
-        currentScaleX: BAR_WIDTH * 1.28,
-        targetScaleX: BAR_WIDTH * 1.28,
-        targetColor: new THREE.Color(0x4cefff),
-      };
-
-      root.add(base, hitbox, label, tuitionMesh, depletionMesh, netMarkerMesh);
-      this.monthGroup.add(root);
-      this.months.set(month.id, {
-        id: month.id,
-        x,
-        root,
-        base,
-        hitbox,
-        label,
-        segments,
-        tuition,
-        depletion,
-        netMarker,
-      });
-    });
-  }
-
-  private updateMonthTargets() {
-    this.series.forEach((month) => {
-      const handle = this.months.get(month.id);
-      if (!handle) {
-        return;
+    this.preset = preset;
+    const mobile = this.camera.aspect < 1.5;
+    const risk = this.series.map((m, i) => m.status === "red" ? i : -1).filter(i => i >= 0);
+    const riskX = preset === "risk" && risk.length ? this.x(risk.reduce((a, b) => a + b) / risk.length) : 0;
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this.camera.aspect);
+    const minY = -Math.max(.25, ...this.series.map(m => m.tuition / this.scale));
+    const maxY = Math.max(1, ...this.series.map(m => m.total / this.scale + .6), this.threshold / this.scale + .4);
+    const target = new THREE.Vector3(riskX, (minY + maxY) / 2, -.1);
+    let direction = new THREE.Vector3(mobile ? .13 : .32, .32, 1).normalize();
+    if (preset === "front") direction.set(0, .06, 1).normalize();
+    if (preset === "top") { direction.set(0, 1, .08).normalize(); target.y = 0; }
+    const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+    let distance = 4;
+    const half = Math.max(2, this.series.length * STEP / 2 + .5);
+    const bounds: THREE.Vector3[] = [];
+    this.series.forEach((month, index) => {
+      for (const x of [this.x(index) - .5, this.x(index) + .5]) {
+        bounds.push(new THREE.Vector3(x, month.total / this.scale + .7, -.6));
+        bounds.push(new THREE.Vector3(x, -month.tuition / this.scale - .28, 1));
       }
-
-      const isFocused = this.hoveredMonth === month.id || this.selectedMonth === month.id;
-      const statusColor = getStatusColor(month.status);
-      handle.base.material.color.lerp(statusColor.base, 0.42);
-      handle.base.material.emissive.copy(statusColor.emissive);
-      handle.base.material.emissiveIntensity = isFocused ? 1.35 : month.status === "red" ? 1.08 : 0.62;
-
-      const labelMaterial = handle.label.material as THREE.SpriteMaterial;
-      labelMaterial.opacity = isFocused ? 1 : 0.72;
-      handle.label.scale.set(isFocused ? 0.88 : 0.78, isFocused ? 0.38 : 0.33, 1);
-
-      let stackY = 0;
-      TIMELINE_STREAMS.forEach((stream) => {
-        const amount = month.streams[stream];
-        const segment = handle.segments.get(stream);
-        if (!segment) {
-          return;
-        }
-
-        const targetHeight = Math.max(MIN_HEIGHT, scaleValue(amount));
-        const streamIsActive = !this.activeStream || this.activeStream === stream;
-        const hasValue = amount > 0;
-        const focusBoost = isFocused ? 0.12 : 0;
-        const streamOpacity = hasValue
-          ? streamIsActive
-            ? stream === "vaBackpay"
-              ? 0.88
-              : 0.68
-            : 0.16
-          : 0.025;
-        segment.targetHeight = targetHeight;
-        segment.targetY = stackY + targetHeight / 2;
-        segment.targetOpacity = Math.min(0.95, streamOpacity + focusBoost);
-        stackY += targetHeight;
-
-        segment.mesh.material.emissiveIntensity =
-          stream === this.activeStream || isFocused ? 0.72 : stream === "vaBackpay" ? 0.52 : 0.34;
-      });
-
-      const tuitionHeight = Math.max(MIN_HEIGHT, scaleValue(month.tuition));
-      handle.tuition.targetHeight = tuitionHeight;
-      handle.tuition.targetY = -tuitionHeight / 2;
-      handle.tuition.targetOpacity = month.tuition > 0 ? (isFocused ? 0.72 : 0.48) : 0.03;
-
-      const grossY = scaleValue(month.total);
-      const netY = scaleSignedValue(month.effective);
-      const visibleNetY = Number.isFinite(netY) ? netY : 0;
-      const depletionBottom = Math.min(grossY, Math.max(0, visibleNetY));
-      const depletionTop = Math.max(grossY, Math.max(0, visibleNetY));
-      const depletionHeight = Math.max(MIN_HEIGHT, depletionTop - depletionBottom);
-      handle.depletion.targetHeight = depletionHeight;
-      handle.depletion.targetY = depletionBottom + depletionHeight / 2;
-      handle.depletion.targetOpacity = month.tuition > 0 && month.total > 0 ? (isFocused ? 0.42 : 0.24) : 0.025;
-
-      handle.netMarker.targetY = visibleNetY;
-      handle.netMarker.targetScaleX = isFocused ? BAR_WIDTH * 1.58 : BAR_WIDTH * 1.28;
-      handle.netMarker.targetOpacity = Math.abs(month.effective) > 1 || month.tuition > 0 ? (isFocused ? 0.96 : 0.76) : 0.18;
-      handle.netMarker.targetColor.copy(getNetMarkerColor(month.effective, this.thresholdValue));
-
-      const hitboxTop = Math.max(stackY, grossY, scaleValue(this.thresholdValue), 0.9);
-      const hitboxBottom = Math.min(visibleNetY, -tuitionHeight, -0.12);
-      handle.hitbox.scale.y = Math.max(1, (hitboxTop - hitboxBottom + 0.8) / 9);
-      handle.hitbox.position.y = (hitboxTop + hitboxBottom) / 2;
     });
-  }
-
-  private updateGrid() {
-    const markerStep = chooseValueStep(this.maxValue);
-    const signature = `${this.series.length}:${Math.round(this.maxValue)}:${markerStep}`;
-    if (signature === this.gridSignature) {
-      return;
+    for (const x of [-half, half]) for (const y of [0, this.threshold / this.scale]) {
+      bounds.push(new THREE.Vector3(x, y, -1.8), new THREE.Vector3(x, y, 1.15));
     }
-    this.gridSignature = signature;
-
-    disposeObject(this.gridGroup);
-    this.gridGroup.clear();
-
-    const width = getSceneWidth(Math.max(1, this.series.length));
-    const baseGrid = new THREE.GridHelper(width + 1.6, 12, 0x2a9fbd, 0x174058);
-    const gridMaterial = baseGrid.material as THREE.Material;
-    gridMaterial.transparent = true;
-    gridMaterial.opacity = 0.22;
-    baseGrid.position.y = -0.1;
-    baseGrid.scale.z = SCENE_DEPTH / (width + 1.6);
-    this.gridGroup.add(baseGrid);
-
-    const axisMaterial = new THREE.LineBasicMaterial({
-      color: 0x7ed6f6,
-      transparent: true,
-      opacity: 0.22,
-    });
-    const points: number[] = [];
-    for (let value = 0; value <= this.maxValue + markerStep; value += markerStep) {
-      const y = scaleValue(value);
-      points.push(-width / 2, y, -1.72, width / 2, y, -1.72);
-      const label = createTextSprite(formatAxisValue(value), {
-        color: "#9bb8c7",
-        accent: "#4cefff",
-        fontSize: 28,
-        width: 240,
-        height: 90,
-      });
-      label.position.set(-width / 2 - 0.62, y, -1.72);
-      label.scale.set(0.54, 0.22, 1);
-      this.gridGroup.add(label);
+    // Fit the actual data silhouette, rather than empty corners of a giant bounding box.
+    for (const bound of bounds) {
+      const offset = bound.sub(target);
+      distance = Math.max(distance,
+        Math.abs(offset.dot(right)) / Math.tan(horizontalFov / 2) + offset.dot(direction),
+        Math.abs(offset.dot(up)) / Math.tan(verticalFov / 2) + offset.dot(direction));
     }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
-    this.gridGroup.add(new THREE.LineSegments(geometry, axisMaterial));
-  }
-
-  private updateFloor() {
-    const signature = `${this.series.length}:${Math.round(this.thresholdValue)}:${this.thresholdLabel}`;
-    if (signature === this.floorSignature) {
-      return;
-    }
-    this.floorSignature = signature;
-
-    const width = getSceneWidth(Math.max(1, this.series.length)) + 1.2;
-    const floorY = scaleValue(this.thresholdValue);
-    this.floorPlane.position.y = floorY;
-    this.floorPlane.scale.set(width, SCENE_DEPTH * 0.72, 1);
-
-    const floorPoints = [
-      -width / 2, floorY, -SCENE_DEPTH / 2,
-      width / 2, floorY, -SCENE_DEPTH / 2,
-      width / 2, floorY, SCENE_DEPTH / 2,
-      -width / 2, floorY, SCENE_DEPTH / 2,
-      -width / 2, floorY, -SCENE_DEPTH / 2,
-      -width / 2, floorY, SCENE_DEPTH / 2,
-      width / 2, floorY, -SCENE_DEPTH / 2,
-      width / 2, floorY, SCENE_DEPTH / 2,
-    ];
-    this.floorLine.geometry.dispose();
-    this.floorLine.geometry = new THREE.BufferGeometry();
-    this.floorLine.geometry.setAttribute("position", new THREE.Float32BufferAttribute(floorPoints, 3));
-    this.floorLabel.position.set(-width / 2 + 1.2, floorY + 0.16, -SCENE_DEPTH / 2 - 0.16);
-    this.floorLabel.scale.set(1.35, 0.32, 1);
-    updateTextSprite(this.floorLabel, `${this.thresholdLabel.toUpperCase()} FLOOR`, {
-      color: "#e9fbff",
-      accent: "#4cefff",
-      fontSize: 32,
-      width: 560,
-      height: 120,
-    });
-  }
-
-  private updateEvents(events: Timeline3DEvent[]) {
-    disposeObject(this.eventGroup);
-    this.eventGroup.clear();
-
-    const stacked = new Map<MonthId, number>();
-    events.forEach((event) => {
-      const monthHandle = this.months.get(event.monthId);
-      if (!monthHandle) {
-        return;
-      }
-
-      const stack = stacked.get(event.monthId) ?? 0;
-      stacked.set(event.monthId, stack + 1);
-
-      const color = getEventColor(event.kind);
-      const lineMaterial = new THREE.LineBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.62,
-      });
-      const yTop = scaleValue(this.maxValue * 0.72) + stack * 0.3;
-      const geometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(monthHandle.x, 0, -1.08 - stack * 0.08),
-        new THREE.Vector3(monthHandle.x, yTop, -1.08 - stack * 0.08),
-      ]);
-      this.eventGroup.add(new THREE.Line(geometry, lineMaterial));
-
-      const node = new THREE.Mesh(
-        new THREE.SphereGeometry(0.065, 16, 12),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.86 }),
-      );
-      node.position.set(monthHandle.x, yTop, -1.08 - stack * 0.08);
-      this.eventGroup.add(node);
-
-      const label = createTextSprite(event.label.toUpperCase(), {
-        color: "#effbff",
-        accent: colorToCss(color),
-        fontSize: 26,
-        width: 420,
-        height: 100,
-      });
-      label.position.set(monthHandle.x, yTop + 0.24, -1.14 - stack * 0.08);
-      label.scale.set(0.94, 0.26, 1);
-      this.eventGroup.add(label);
-    });
-  }
-
-  private requestRender(frames = 1) {
-    this.framesRemaining = Math.max(this.framesRemaining, frames);
-
-    if (this.frameId !== null || !this.isSceneVisible || !this.isPageVisible) {
-      return;
-    }
-
-    this.clock.getDelta();
-    this.frameId = requestAnimationFrame(this.renderFrame);
-  }
-
-  private renderFrame = () => {
-    this.frameId = null;
-
-    if (!this.isSceneVisible || !this.isPageVisible) {
-      return;
-    }
-
-    const delta = Math.min(this.clock.getDelta(), 0.08);
-    const cameraIsMoving = this.updateCameraMove();
-    const controlsChanged = this.controls.update();
-    this.clampControls();
-    const geometryIsAnimating = this.animateSegments(delta);
-    this.renderer.render(this.scene, this.camera);
-
-    this.framesRemaining = Math.max(0, this.framesRemaining - 1);
-    if (cameraIsMoving || controlsChanged || geometryIsAnimating || this.framesRemaining > 0) {
-      this.frameId = requestAnimationFrame(this.renderFrame);
-    }
-  };
-
-  private animateSegments(delta: number) {
-    const alpha = this.reducedMotion ? 1 : 1 - Math.exp(-(delta / TRANSITION_SECONDS) * 4.5);
-    let isAnimating = false;
-    this.months.forEach((month) => {
-      month.segments.forEach((segment) => {
-        isAnimating = this.animateBox(segment, alpha) || isAnimating;
-      });
-
-      isAnimating = this.animateBox(month.tuition, alpha) || isAnimating;
-      isAnimating = this.animateBox(month.depletion, alpha) || isAnimating;
-      isAnimating = this.animateNetMarker(month.netMarker, alpha) || isAnimating;
-    });
-
-    return isAnimating;
-  }
-
-  private animateBox(
-    handle: {
-      mesh: THREE.Mesh<THREE.BoxGeometry, THREE.Material>;
-      currentHeight: number;
-      targetHeight: number;
-      currentY: number;
-      targetY: number;
-      currentOpacity: number;
-      targetOpacity: number;
-    },
-    alpha: number,
-  ) {
-    const wasAnimating =
-      Math.abs(handle.currentHeight - handle.targetHeight) > 0.001 ||
-      Math.abs(handle.currentY - handle.targetY) > 0.001 ||
-      Math.abs(handle.currentOpacity - handle.targetOpacity) > 0.003;
-
-    handle.currentHeight = THREE.MathUtils.lerp(handle.currentHeight, handle.targetHeight, alpha);
-    handle.currentY = THREE.MathUtils.lerp(handle.currentY, handle.targetY, alpha);
-    handle.currentOpacity = THREE.MathUtils.lerp(handle.currentOpacity, handle.targetOpacity, alpha);
-    handle.mesh.scale.y = Math.max(MIN_HEIGHT, handle.currentHeight);
-    handle.mesh.position.y = handle.currentY;
-    handle.mesh.material.opacity = handle.currentOpacity;
-
-    return wasAnimating;
-  }
-
-  private animateNetMarker(marker: NetMarkerHandle, alpha: number) {
-    const wasAnimating =
-      Math.abs(marker.currentY - marker.targetY) > 0.001 ||
-      Math.abs(marker.currentOpacity - marker.targetOpacity) > 0.003 ||
-      Math.abs(marker.currentScaleX - marker.targetScaleX) > 0.001 ||
-      colorDelta(marker.mesh.material.color, marker.targetColor) > 0.003;
-
-    marker.currentY = THREE.MathUtils.lerp(marker.currentY, marker.targetY, alpha);
-    marker.currentOpacity = THREE.MathUtils.lerp(marker.currentOpacity, marker.targetOpacity, alpha);
-    marker.currentScaleX = THREE.MathUtils.lerp(marker.currentScaleX, marker.targetScaleX, alpha);
-    marker.mesh.position.y = marker.currentY;
-    marker.mesh.scale.x = marker.currentScaleX;
-    marker.mesh.material.opacity = marker.currentOpacity;
-    marker.mesh.material.color.lerp(marker.targetColor, alpha);
-
-    return wasAnimating;
-  }
-
-  private updateCameraMove() {
-    if (!this.cameraMove) {
-      return false;
-    }
-
-    const progress = Math.min(1, (performance.now() - this.cameraMove.start) / this.cameraMove.duration);
-    const eased = progress * progress * (3 - 2 * progress);
-    this.camera.position.lerpVectors(this.cameraMove.fromPosition, this.cameraMove.toPosition, eased);
-    this.controls.target.lerpVectors(this.cameraMove.fromTarget, this.cameraMove.toTarget, eased);
-
-    if (progress >= 1) {
+    distance *= preset === "risk" && !mobile ? .9 : 1.05;
+    const position = target.clone().addScaledVector(direction, distance);
+    if (immediate || this.reduced) {
       this.cameraMove = null;
-    }
-
-    return true;
-  }
-
-  private moveCamera(position: THREE.Vector3, target: THREE.Vector3, immediate: boolean) {
-    if (immediate) {
       this.camera.position.copy(position);
       this.controls.target.copy(target);
-      this.camera.lookAt(target);
       this.controls.update();
-      this.cameraMove = null;
-      this.requestRender(RESIZE_SETTLE_FRAMES);
-      return;
+    } else {
+      this.cameraMove = { start: performance.now(), from: this.camera.position.clone(), to: position, fromTarget: this.controls.target.clone(), toTarget: target };
     }
-
-    this.cameraMove = {
-      start: performance.now(),
-      duration: 520,
-      fromPosition: this.camera.position.clone(),
-      toPosition: position,
-      fromTarget: this.controls.target.clone(),
-      toTarget: target,
-    };
-    this.requestRender(TRANSITION_SETTLE_FRAMES);
+    this.requestRender();
   }
 
-  private clampControls() {
-    const width = getSceneWidth(Math.max(1, this.series.length));
-    this.controls.target.x = THREE.MathUtils.clamp(this.controls.target.x, -width / 2, width / 2);
-    this.controls.target.y = THREE.MathUtils.clamp(this.controls.target.y, 0, 6.6);
-    this.controls.target.z = THREE.MathUtils.clamp(this.controls.target.z, -2.6, 2.2);
+  private x(index: number) { return (index - (this.series.length - 1) / 2) * STEP; }
+  private rebuildGrid() {
+    clearGroup(this.grid);
+    const half = Math.max(2, this.series.length * STEP / 2);
+    const vertices: number[] = [];
+    for (let i = 0; i <= this.series.length; i++) {
+      const x = -half + i * STEP;
+      vertices.push(x, -.065, -1.7, x, -.065, 1.3);
+    }
+    for (const z of [-1.7, -.7, .3, 1.3]) vertices.push(-half, -.065, z, half, -.065, z);
+    const tick = Math.ceil(this.scale * 5 / 4 / 500) * 500;
+    for (let value = 0; value <= this.scale * 5.4; value += tick) {
+      const y = value / this.scale;
+      vertices.push(-half, y, -1.7, half, y, -1.7);
+      const label = textSprite(value ? `$${Number((value / 1000).toFixed(1))}k` : "$0", "#809188", .62);
+      label.position.set(-half - .4, y, -1.7);
+      this.grid.add(label);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    this.grid.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0x34453b, transparent: true, opacity: .5 })));
   }
 
-  private resize() {
-    const rect = this.container.getBoundingClientRect();
-    const width = Math.max(320, rect.width);
-    const height = Math.max(360, rect.height);
+  private rebuildReference() {
+    clearGroup(this.reference);
+    const half = this.series.length * STEP / 2;
+    const y = this.threshold / this.scale;
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(half * 2, 2.25), new THREE.MeshBasicMaterial({ color: 0xdfc38b, transparent: true, opacity: .055, side: THREE.DoubleSide, depthWrite: false }));
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.set(0, y, 0);
+    const outline = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-half, y, 1.12), new THREE.Vector3(half, y, 1.12),
+      new THREE.Vector3(half, y, -1.12), new THREE.Vector3(-half, y, -1.12), new THREE.Vector3(-half, y, 1.12),
+    ]), new THREE.LineDashedMaterial({ color: 0xdfc38b, dashSize: .1, gapSize: .08, transparent: true, opacity: .6 }));
+    outline.computeLineDistances();
+    const label = textSprite(`${this.thresholdLabel} / $${Math.round(this.threshold).toLocaleString("en-US")}`, "#dfc38b", 2.1);
+    label.position.set(-half + 1, y + .18, -1.18);
+    this.reference.add(plane, outline, label);
+  }
+
+  private rebuildEvents() {
+    clearGroup(this.eventsGroup);
+    // Combine same-month events into one marker so short labels remain legible.
+    const byMonth = new Map<string, string[]>();
+    this.events.forEach(event => byMonth.set(event.monthId, [...(byMonth.get(event.monthId) ?? []), event.label]));
+    byMonth.forEach((names, monthId) => {
+      const index = this.series.findIndex(m => m.id === monthId);
+      if (index < 0) return;
+      const x = this.x(index);
+      const y = this.series[index].total / this.scale + .38;
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, y - .23, -.52), new THREE.Vector3(x, y + .12, -.52)]), new THREE.LineBasicMaterial({ color: 0x91aca0 }));
+      const label = textSprite(names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0], "#abc4b7", 1.15);
+      label.position.set(x, y + .24, -.52);
+      this.eventsGroup.add(line, label);
+    });
+  }
+
+  private resize = () => {
+    if (this.disposed) return;
+    const { width, height } = this.options.container.getBoundingClientRect();
+    if (!width || !height) return;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width < 600 ? 1.5 : 1.75));
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-  }
+    this.trace.material.resolution.set(width, height);
+    this.setCameraPreset(this.preset, true);
+  };
 
-  private handlePointerMove = (event: PointerEvent) => {
-    if (!this.controlsEnabled) {
-      return;
+  private requestRender = () => {
+    if (this.disposed || this.frame !== null || !this.visible || !this.pageVisible) return;
+    this.frame = requestAnimationFrame(this.render);
+  };
+
+  private render = (now: number) => {
+    this.frame = null;
+    if (this.disposed || !this.visible || !this.pageVisible) return;
+    const dt = Math.min((now - this.lastFrame) / 1000 || .016, .05);
+    this.lastFrame = now;
+    const alpha = this.reduced ? 1 : 1 - Math.exp(-dt * 11);
+    let moving = false;
+    const stack = this.series.map(() => 0);
+    const focused = this.state.hoveredMonth ?? this.state.selectedMonth;
+    this.segments.forEach((segment, index) => {
+      if (Math.abs(segment.height - segment.target) > .0008) moving = true;
+      segment.height = THREE.MathUtils.lerp(segment.height, segment.target, alpha);
+      const height = Math.max(.00001, segment.height);
+      this.dummy.position.set(this.x(segment.month), stack[segment.month] + height / 2, 0);
+      const present = segment.target > 0 || segment.height > .001;
+      this.dummy.scale.set(present ? WIDTH : 0, height, present ? DEPTH : 0);
+      this.dummy.updateMatrix();
+      this.columns.setMatrixAt(index, this.dummy.matrix);
+      stack[segment.month] += height;
+      const isFocused = this.series[segment.month].id === focused;
+      this.color.copy(segment.color).multiplyScalar(this.state.activeStream && this.state.activeStream !== segment.stream ? .18 : isFocused ? 1.3 : 1);
+      this.columns.setColorAt(index, this.color);
+    });
+    this.columns.instanceMatrix.needsUpdate = true;
+    this.columns.boundingSphere = null;
+    if (this.columns.instanceColor) this.columns.instanceColor.needsUpdate = true;
+    const points: number[] = [];
+    this.series.forEach((month, index) => {
+      const target = month.effective / this.scale;
+      if (Math.abs(this.netHeights[index] - target) > .001) moving = true;
+      const y = this.netHeights[index] = THREE.MathUtils.lerp(this.netHeights[index], target, alpha);
+      points.push(this.x(index), y + .012, .51);
+      this.dummy.position.set(this.x(index), y + .012, .51);
+      this.dummy.scale.setScalar(month.id === focused ? 1.55 : 1);
+      this.dummy.updateMatrix(); this.nodes.setMatrixAt(index, this.dummy.matrix);
+      this.dummy.position.set(this.x(index), -.07, 0);
+      this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix(); this.bases.setMatrixAt(index, this.dummy.matrix);
+      this.bases.setColorAt(index, this.color.set(month.status === "red" ? 0x9d535f : month.status === "yellow" ? 0x8e7744 : 0x4b8266).multiplyScalar(month.id === focused ? 1.3 : .55));
+      this.dummy.position.set(this.x(index), -month.tuition / this.scale / 2, .85);
+      this.dummy.scale.set(month.tuition > 0 ? 1 : 0, Math.max(.00001, month.tuition / this.scale), month.tuition > 0 ? 1 : 0); this.dummy.updateMatrix(); this.deductions.setMatrixAt(index, this.dummy.matrix);
+    });
+    for (const mesh of [this.nodes, this.bases, this.deductions]) mesh.instanceMatrix.needsUpdate = true;
+    if (this.bases.instanceColor) this.bases.instanceColor.needsUpdate = true;
+    if (points.length >= 6) {
+      const starts = this.trace.geometry.getAttribute("instanceStart");
+      const ends = this.trace.geometry.getAttribute("instanceEnd");
+      if (!starts || starts.count !== this.series.length - 1) this.trace.geometry.setPositions(points);
+      else {
+        for (let i = 0; i < starts.count; i++) {
+          starts.setXYZ(i, points[i * 3], points[i * 3 + 1], points[i * 3 + 2]);
+          ends.setXYZ(i, points[i * 3 + 3], points[i * 3 + 4], points[i * 3 + 5]);
+        }
+        starts.needsUpdate = true; ends.needsUpdate = true;
+        this.trace.geometry.computeBoundingSphere();
+      }
     }
+    this.trace.visible = points.length >= 6;
+    const focusIndex = this.series.findIndex(m => m.id === focused);
+    this.focus.visible = focusIndex >= 0;
+    if (focusIndex >= 0) { this.focus.scale.set(WIDTH + .12, Math.max(.05, stack[focusIndex]) + .08, DEPTH + .12); this.focus.position.set(this.x(focusIndex), stack[focusIndex] / 2, 0); }
+    if (this.cameraMove) {
+      const progress = this.reduced ? 1 : Math.min(1, (now - this.cameraMove.start) / 550);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      this.camera.position.lerpVectors(this.cameraMove.from, this.cameraMove.to, ease);
+      this.controls.target.lerpVectors(this.cameraMove.fromTarget, this.cameraMove.toTarget, ease);
+      if (progress === 1) this.cameraMove = null;
+      else moving = true;
+    }
+    const changed = this.controls.update(dt);
+    this.renderer.render(this.scene, this.camera);
+    // Useful for local performance checks without retaining a renderer on window.
+    this.options.canvas.dataset.drawCalls = String(this.renderer.info.render.calls);
+    this.options.canvas.dataset.renderFrames = String(this.renderer.info.render.frame);
+    if (moving || changed || (this.autoRotate && !this.reduced)) this.requestRender();
+  };
 
-    const rect = this.canvas.getBoundingClientRect();
-    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  private hit(event: PointerEvent) {
+    const rect = this.options.canvas.getBoundingClientRect();
+    this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hitboxes = [...this.months.values()].map((month) => month.hitbox);
-    const [hit] = this.raycaster.intersectObjects(hitboxes, false);
-    const nextMonth = (hit?.object.userData.monthId as MonthId | undefined) ?? null;
-
-    if (nextMonth !== this.hoveredMonth) {
-      this.hoveredMonth = nextMonth;
-      this.onHoverMonth(nextMonth);
-      this.canvas.style.cursor = nextMonth ? "pointer" : "grab";
-      this.requestRender(INTERACTION_SETTLE_FRAMES);
+    const [hit] = this.raycaster.intersectObject(this.columns);
+    const index = hit?.instanceId !== undefined ? Math.floor(hit.instanceId / TIMELINE_STREAMS.length) : -1;
+    return this.series[index]?.id ?? null;
+  }
+  private handleMove = (event: PointerEvent) => {
+    if (!this.enabled || this.down || event.pointerType === "touch") return;
+    const month = this.hit(event);
+    if (month !== this.state.hoveredMonth) this.options.onHoverMonth(month);
+    this.options.canvas.style.cursor = month ? "pointer" : "grab";
+  };
+  private handleLeave = () => { this.down = null; this.options.onHoverMonth(null); };
+  private handleDown = (event: PointerEvent) => { this.down = { x: event.clientX, y: event.clientY }; };
+  private handleUp = (event: PointerEvent) => {
+    if (this.enabled && this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) < 6) {
+      const month = this.hit(event);
+      if (month) this.options.onSelectMonth(month);
     }
+    this.down = null;
   };
+  private cancelCameraMove = () => { this.cameraMove = null; };
+  private handleVisibility = () => { this.pageVisible = document.visibilityState !== "hidden"; if (this.pageVisible) this.requestRender(); };
+  private handleContextLost = (event: Event) => { event.preventDefault(); this.options.onUnavailable?.(); };
 
-  private handlePointerLeave = () => {
-    if (!this.controlsEnabled && this.hoveredMonth === null) {
-      return;
-    }
-
-    this.hoveredMonth = null;
-    this.canvas.style.cursor = this.controlsEnabled ? "grab" : "default";
-    this.onHoverMonth(null);
-    this.requestRender(INTERACTION_SETTLE_FRAMES);
-  };
-
-  private handleClick = () => {
-    if (this.controlsEnabled && this.hoveredMonth) {
-      this.onSelectMonth(this.hoveredMonth);
-    }
-  };
-
-  private handleVisibilityChange = () => {
-    this.isPageVisible = document.visibilityState !== "hidden";
-    if (this.isPageVisible) {
-      this.requestRender(TRANSITION_SETTLE_FRAMES);
-    } else if (this.frameId !== null) {
-      cancelAnimationFrame(this.frameId);
-      this.frameId = null;
-    }
-  };
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.resizeObserver.disconnect(); this.intersectionObserver.disconnect();
+    this.controls.removeEventListener("change", this.requestRender);
+    this.controls.removeEventListener("start", this.cancelCameraMove);
+    this.controls.dispose();
+    const canvas = this.options.canvas;
+    canvas.removeEventListener("pointermove", this.handleMove);
+    canvas.removeEventListener("pointerleave", this.handleLeave);
+    canvas.removeEventListener("pointerdown", this.handleDown);
+    canvas.removeEventListener("pointerup", this.handleUp);
+    canvas.removeEventListener("webglcontextlost", this.handleContextLost);
+    document.removeEventListener("visibilitychange", this.handleVisibility);
+    clearGroup(this.scene);
+    this.renderer.dispose();
+  }
 }
 
-function getMonthX(index: number, total: number) {
-  return (index - (total - 1) / 2) * MONTH_STEP;
-}
-
-function getSceneWidth(total: number) {
-  return (Math.max(1, total) - 1) * MONTH_STEP + BAR_WIDTH;
-}
-
-function scaleValue(value: number) {
-  return Math.max(0, value) / VALUE_UNIT;
-}
-
-function scaleSignedValue(value: number) {
-  return THREE.MathUtils.clamp(value / VALUE_UNIT, -2.6, 16);
-}
-
-function getNetMarkerColor(effectiveValue: number, thresholdValue: number) {
-  if (effectiveValue < 0) {
-    return new THREE.Color(0xff6572);
-  }
-
-  if (effectiveValue < thresholdValue) {
-    return new THREE.Color(0xffd782);
-  }
-
-  return new THREE.Color(0x4cefff);
-}
-
-function getStatusColor(status: string) {
-  if (status === "red") {
-    return {
-      base: new THREE.Color(0x38131b),
-      emissive: new THREE.Color(0xff6572),
-    };
-  }
-
-  if (status === "yellow") {
-    return {
-      base: new THREE.Color(0x332812),
-      emissive: new THREE.Color(0xffd782),
-    };
-  }
-
-  return {
-    base: new THREE.Color(0x123323),
-    emissive: new THREE.Color(0x72e9a8),
-  };
-}
-
-function getEventColor(kind: Timeline3DEvent["kind"]) {
-  if (kind === "risk") {
-    return 0xff6572;
-  }
-
-  if (kind === "school") {
-    return 0xb9a1ff;
-  }
-
-  if (kind === "va") {
-    return 0x72e9a8;
-  }
-
-  if (kind === "work") {
-    return 0x51f3ff;
-  }
-
-  return 0x4cefff;
-}
-
-function chooseValueStep(maxValue: number) {
-  if (maxValue > 12000) {
-    return 4000;
-  }
-
-  if (maxValue > 8000) {
-    return 3000;
-  }
-
-  return 2000;
-}
-
-function formatAxisValue(value: number) {
-  if (value === 0) {
-    return "$0";
-  }
-
-  return `$${Math.round(value / 1000)}K`;
-}
-
-function createTextSprite(
-  text: string,
-  options: { color: string; accent: string; fontSize: number; width: number; height: number },
-) {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
-  updateTextSprite(sprite, text, options);
+function textSprite(text: string, color: string, width: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512; canvas.height = 80;
+  const ctx = canvas.getContext("2d")!;
+  ctx.font = "500 30px -apple-system, Segoe UI, sans-serif";
+  ctx.fillStyle = color; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, 256, 40, 500);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false }));
+  // Crop transparent margins so short labels do not shrink to unreadable text.
+  const measured = Math.min(500, ctx.measureText(text).width + 16);
+  texture.repeat.x = measured / 512; texture.offset.x = (512 - measured) / 1024;
+  const fittedWidth = Math.min(width, measured / 80 * .5);
+  sprite.scale.set(fittedWidth, fittedWidth * 80 / measured, 1);
   return sprite;
 }
 
-function updateTextSprite(
-  sprite: THREE.Sprite,
-  text: string,
-  options: { color: string; accent: string; fontSize: number; width: number; height: number },
-) {
-  const canvas = document.createElement("canvas");
-  canvas.width = options.width;
-  canvas.height = options.height;
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    return;
-  }
-
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.font = `800 ${options.fontSize}px Inter, system-ui, sans-serif`;
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.shadowColor = options.accent;
-  context.shadowBlur = 18;
-  context.fillStyle = options.color;
-  context.fillText(text, canvas.width / 2, canvas.height / 2);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const material = sprite.material as THREE.SpriteMaterial;
-  material.map?.dispose();
-  material.map = texture;
-  material.needsUpdate = true;
-}
-
-function colorToCss(color: number) {
-  return `#${color.toString(16).padStart(6, "0")}`;
-}
-
-function colorDelta(current: THREE.Color, target: THREE.Color) {
-  return Math.max(
-    Math.abs(current.r - target.r),
-    Math.abs(current.g - target.g),
-    Math.abs(current.b - target.b),
-  );
-}
-
-function disposeObject(object: THREE.Object3D) {
-  object.traverse((child) => {
-    if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.Sprite) {
-      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-        child.geometry?.dispose();
-      }
-
-      const material = child.material;
-      if (Array.isArray(material)) {
-        material.forEach(disposeMaterial);
-      } else if (material) {
-        disposeMaterial(material);
-      }
+function clearGroup(group: THREE.Object3D) {
+  group.traverse(object => {
+    if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Sprite) {
+      if ("geometry" in object) object.geometry.dispose();
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach(material => { (material as THREE.MeshBasicMaterial).map?.dispose(); material.dispose(); });
+      if (object instanceof THREE.InstancedMesh) object.dispose();
     }
   });
-}
-
-function disposeMaterial(material: THREE.Material) {
-  const withMap = material as THREE.Material & { map?: THREE.Texture | null };
-  withMap.map?.dispose();
-  material.dispose();
+  group.clear();
 }
