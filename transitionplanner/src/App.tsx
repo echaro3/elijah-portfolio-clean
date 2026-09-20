@@ -1,4 +1,5 @@
 import * as React from "react";
+import { trackAction, trackPlannerStarted } from "./analytics";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -1099,6 +1100,7 @@ function App() {
   }, [scenarioId, settings]);
 
   const updateSetting = <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => {
+    trackPlannerStarted();
     setPlannerState((current) => ({
       ...current,
       settings: { ...current.settings, [key]: value },
@@ -1106,6 +1108,8 @@ function App() {
   };
 
   const selectScenario = (nextScenarioId: ScenarioId) => {
+    trackPlannerStarted();
+    trackAction("scenario_selected");
     const next = SCENARIOS[nextScenarioId].settings;
     setPlannerState((current) => ({
       scenarioId: nextScenarioId,
@@ -1172,6 +1176,7 @@ function App() {
 
   const printPlan = () => {
     if (typeof window !== "undefined") {
+      trackAction("plan_print");
       window.print();
     }
   };

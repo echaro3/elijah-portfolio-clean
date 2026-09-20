@@ -58,7 +58,7 @@ npm run build
 
 `index.html` contains the canonical URL, veteran-focused search and social metadata, and truthful WebApplication/creator structured data. `npm run build` also prerenders the shared introduction, cited sources, and creator credit into the initial HTML. It deliberately excludes saved settings, example financial balances, and the browser refresh timestamp. The interactive app mounts normally and reads only the visitor's own local storage.
 
-The primary sitemap is maintained at the portfolio's `public/sitemap.xml`. The app's public share image is an actual screenshot using clean example settings; `/transitionplanner/social-preview.png` is explicitly routed in `vercel.json`. No third-party analytics or submission of planner inputs is added. Search indexing and ranking remain search-engine decisions; verified Search Console ownership is required for manual indexing requests.
+The primary sitemap is maintained at the portfolio's `public/sitemap.xml`. The app's public share image is an actual screenshot using clean example settings; `/transitionplanner/social-preview.png` is explicitly routed in `vercel.json`. Optional, consent-based Google Analytics measures production visits and fixed action names, never planner inputs. See `ANALYTICS.md` for privacy boundaries and release checks. Search indexing and ranking remain search-engine decisions; verified Search Console ownership is required for manual indexing requests.
 
 ## Deployment
 

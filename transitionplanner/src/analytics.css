@@ -1,0 +1,27 @@
+.site-analytics-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px max(20px, calc((100% - 1200px) / 2));
+  background: #161a18;
+  color: #cbd3cd;
+  font: 12px/1.6 system-ui, sans-serif;
+  border-top: 1px solid #38413c;
+}
+.site-analytics-choice p { margin: 0; max-width: 760px; }
+.site-analytics-choice button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #67776b;
+  border-radius: 6px;
+  color: #f0f5f1;
+  background: #252e28;
+  font: inherit;
+  cursor: pointer;
+}
+.site-analytics-choice button:focus-visible { outline: 2px solid #b8e6c7; outline-offset: 3px; }
+.site-analytics-choice button:disabled { opacity: .6; cursor: default; }
+@media (max-width: 600px) { .site-analytics-choice { align-items: flex-start; flex-direction: column; } }
+@media print { .site-analytics-choice { display: none; } }
