@@ -1,5 +1,7 @@
 import * as React from "react";
 import { trackAction, trackPlannerStarted } from "./analytics";
+import GuidedSetup from "./GuidedSetup";
+import { SETUP_KEY, emptyAnswers, loadSetup, setupInsights, type SetupState } from "./setupModel";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -1082,6 +1084,25 @@ function SelectControl<T extends string | number>({
 }
 
 function App() {
+  const [setup, setSetup] = React.useState<SetupState | null>(() => {
+    const saved = loadSetup();
+    if (saved) return saved;
+    try {
+      const raw = window.localStorage.getItem(PLANNER_STORAGE_KEY);
+      if (raw && normalizePlannerState(JSON.parse(raw))) return null;
+    } catch { /* Start without storage or with an invalid saved plan. */ }
+    return { answers: emptyAnswers(), step: 0, complete: false, pending: [] };
+  });
+  const [showSetup, setShowSetup] = React.useState(() => !!setup && !setup.complete);
+  const previousSetup = React.useRef(setup);
+  const pending = setup?.complete ? setup.pending : [];
+  const forecastReady = !pending.includes("separationDate") && !pending.includes("essentialExpenseTarget");
+  React.useEffect(() => {
+    try {
+      if (setup) window.localStorage.setItem(SETUP_KEY, JSON.stringify(setup));
+      else window.localStorage.removeItem(SETUP_KEY);
+    } catch { /* The planner can still be used without persistent storage. */ }
+  }, [setup]);
   const shellRef = React.useRef<HTMLElement | null>(null);
   const prefersReducedMotion = useReducedMotionPreference();
   const [{ scenarioId, settings }, setPlannerState] =
@@ -1101,9 +1122,19 @@ function App() {
 
   const updateSetting = <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => {
     trackPlannerStarted();
+    if ((typeof value === "string" && isDateInput(value)) || (key === "essentialExpenseTarget" && typeof value === "number" && Number.isFinite(value))) {
+      setSetup(current => current ? { ...current, pending: current.pending.filter(field => field !== key) } : null);
+    }
     setPlannerState((current) => ({
       ...current,
-      settings: { ...current.settings, [key]: value },
+      settings: {
+        ...current.settings,
+        ...(key === "essentialExpenseTarget" && pending.includes("essentialExpenseTarget") && typeof value === "number" ? {
+          normalLifestyleTarget: Math.max(value, current.settings.normalLifestyleTarget),
+          idealSavingsTarget: Math.max(value, current.settings.idealSavingsTarget),
+        } : {}),
+        [key]: value,
+      },
     }));
   };
 
@@ -1164,6 +1195,8 @@ function App() {
 
   const resetPlanner = () => {
     setPlannerState(getDefaultPlannerState());
+    setSetup({ answers: emptyAnswers(), step: 0, complete: false, pending: [] });
+    setShowSetup(true);
   };
 
   const clearSavedData = () => {
@@ -1172,6 +1205,8 @@ function App() {
     }
 
     setPlannerState(getDefaultPlannerState());
+    setSetup({ answers: emptyAnswers(), step: 0, complete: false, pending: [] });
+    setShowSetup(true);
   };
 
   const printPlan = () => {
@@ -1180,6 +1215,19 @@ function App() {
       window.print();
     }
   };
+
+  if (showSetup && setup) return <main className="planner-shell">
+    <nav className="app-bar" aria-label="Planner navigation"><a className="app-brand" href="#"><BarChart3 aria-hidden="true" /> Transition planner</a></nav>
+    <header className="setup-intro"><p className="eyebrow">Veteran transition planner</p><h1>Let's start with what you know.</h1><p>A few questions about your transition. No need to have it all figured out.</p></header>
+    <GuidedSetup state={setup} base={BASE_SETTINGS} onChange={setSetup}
+      onCancel={previousSetup.current?.complete || previousSetup.current === null ? () => { setSetup(previousSetup.current); setShowSetup(false); } : undefined}
+      onFinish={(completed, nextSettings) => {
+        setPlannerState({ scenarioId: nextSettings.workType === "none" ? "schoolFirst" : "fullTime", settings: nextSettings });
+        setSetup(completed); setShowSetup(false); trackPlannerStarted();
+        requestAnimationFrame(() => document.getElementById("setup-outcome")?.focus());
+      }} />
+    <details className="setup-followup"><summary>Rates, sources and limitations</summary><SourcePanel /></details>
+  </main>;
 
   return (
     <ReducedMotionContext.Provider value={prefersReducedMotion}>
@@ -1195,10 +1243,20 @@ function App() {
           <a href="#controls-heading">Inputs</a>
           <a href="#sources">Sources <ArrowUpRight aria-hidden="true" /></a>
         </div>
-        <button type="button" className="icon-button" onClick={printPlan} title="Print or save plan" aria-label="Print or save plan"><Printer /></button>
+        <button type="button" className="icon-button" onClick={printPlan} disabled={!forecastReady} title="Print or save plan" aria-label="Print or save plan"><Printer /></button>
       </nav>
-      <Header summary={summary} settings={settings} />
+      {forecastReady ? <Header summary={summary} settings={settings} /> : <header className="planner-header static-header"><PlannerIntroduction /></header>}
+      <button type="button" className="setup-skip setup-launch" onClick={() => {
+        previousSetup.current = setup;
+        setSetup({ answers: emptyAnswers(), step: 0, complete: false, pending: [] }); setShowSetup(true);
+      }}>Start a guided setup</button>
+      {setup?.complete && <details className="setup-followup" open={!forecastReady} id="setup-outcome" tabIndex={-1}>
+        <summary>{forecastReady ? "Your starting assumptions and next steps" : "A few details before a reliable forecast"}</summary>
+        <p>{forecastReady ? "This projection uses the inputs below, not a benefit eligibility decision." : "Your answers are saved. Add separation timing and essential expenses below to unlock the financial visuals."}</p>
+        <ul className="setup-insights">{setupInsights(settings, pending).map(note => <li key={note}>{note}</li>)}</ul>
+      </details>}
 
+      {forecastReady && <>
       <section className="metric-grid" aria-label="Planner summary">
         <MetricCard
           icon={<ShieldCheck aria-hidden="true" />}
@@ -1268,12 +1326,15 @@ function App() {
         </div>
       </section>
 
+      </>}
       <ControlPanel
         settings={settings}
         workPreview={workPreview}
         onSettingChange={updateSetting}
+        pending={pending}
       />
 
+      {forecastReady && <>
       <section className="dashboard-grid" aria-label="Income and risk visuals">
         <HolographicTimelineSection
           series={series}
@@ -1300,9 +1361,10 @@ function App() {
       <AssumptionsPanel settings={settings} />
       <ActionPlan />
       <PrintSavePanel onPrint={printPlan} />
+      </>}
       <PrivacyPanel onReset={resetPlanner} onClearSavedData={clearSavedData} />
       <SourcePanel />
-      <PrintSummary settings={settings} series={series} summary={summary} workPreview={workPreview} />
+      {forecastReady && <PrintSummary settings={settings} series={series} summary={summary} workPreview={workPreview} />}
     </main>
     </ReducedMotionContext.Provider>
   );
@@ -1324,7 +1386,7 @@ function Header({ summary, settings }: HeaderProps) {
         </div>
         <div>
           <span>School / training starts</span>
-          <strong>{formatDateLabel(settings.schoolStartDate)}</strong>
+          <strong>{settings.schoolLoad === "none" ? "Not included" : formatDateLabel(settings.schoolStartDate)}</strong>
         </div>
         <div>
           <span>Education load</span>
@@ -1368,12 +1430,13 @@ function MetricCard({ icon, label, value, detail }: MetricCardProps) {
 }
 
 type ControlPanelProps = {
+  pending?: Array<keyof ModelSettings>;
   settings: ModelSettings;
   workPreview: ReturnType<typeof getWorkPreview>;
   onSettingChange: <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => void;
 };
 
-function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelProps) {
+function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: ControlPanelProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const controlGridId = React.useId();
   const vaMonthly = getVaMonthly(settings);
@@ -1432,7 +1495,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
         </span>
         <span>
           <strong>Floor</strong>
-          {formatMoney(settings.essentialExpenseTarget)}/mo
+          {pending.includes("essentialExpenseTarget") ? "Not yet known" : `${formatMoney(settings.essentialExpenseTarget)}/mo`}
         </span>
       </div>
 
@@ -1474,7 +1537,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <span>Separation date</span>
               <input
                 type="date"
-                value={settings.separationDate}
+                value={pending.includes("separationDate") ? "" : settings.separationDate}
                 aria-invalid={dateInvalid("separationDate")}
                 onChange={(event) => onSettingChange("separationDate", event.target.value)}
               />
@@ -1483,7 +1546,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <span>Terminal leave starts</span>
               <input
                 type="date"
-                value={settings.terminalLeaveStartDate}
+                value={pending.includes("terminalLeaveStartDate") ? "" : settings.terminalLeaveStartDate}
                 disabled={settings.alreadySeparated}
                 max={settings.separationDate || undefined}
                 aria-invalid={dateInvalid("terminalLeaveStartDate")}
@@ -1576,7 +1639,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <span>School / training starts</span>
               <input
                 type="date"
-                value={settings.schoolStartDate}
+                value={pending.includes("schoolStartDate") ? "" : settings.schoolStartDate}
                 aria-invalid={dateInvalid("schoolStartDate")}
                 onChange={(event) => onSettingChange("schoolStartDate", event.target.value)}
               />
@@ -1585,7 +1648,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
               <span>School / training ends</span>
               <input
                 type="date"
-                value={settings.schoolEndDate}
+                value={pending.includes("schoolEndDate") ? "" : settings.schoolEndDate}
                 min={settings.schoolStartDate || undefined}
                 aria-invalid={dateInvalid("schoolEndDate")}
                 onChange={(event) => onSettingChange("schoolEndDate", event.target.value)}
@@ -1715,7 +1778,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
           />
           <label>
             <span>Work starts</span>
-            <input type="date" value={settings.workStartDate} disabled={settings.workType === "none"} aria-invalid={dateInvalid("workStartDate")} aria-describedby="work-timing-note" onChange={(event) => onSettingChange("workStartDate", event.target.value)} />
+            <input type="date" value={pending.includes("workStartDate") ? "" : settings.workStartDate} disabled={settings.workType === "none"} aria-invalid={dateInvalid("workStartDate")} aria-describedby="work-timing-note" onChange={(event) => onSettingChange("workStartDate", event.target.value)} />
           </label>
           {settings.workType !== "none" ? <p className="field-note" id="work-timing-note">
             {settings.alreadySeparated ? "Already separated: work can begin on any valid date. " : `For this transition-work model, start on or after terminal leave begins (${formatDateLabel(settings.terminalLeaveStartDate)}), or after separation. Terminal leave allows time away from duty while military pay continues, so civilian and military income can overlap. `}
@@ -1930,7 +1993,7 @@ function ControlPanel({ settings, workPreview, onSettingChange }: ControlPanelPr
                 type="number"
                 min={0}
                 step={50}
-                value={settings.essentialExpenseTarget}
+                value={pending.includes("essentialExpenseTarget") ? "" : settings.essentialExpenseTarget}
                 onChange={(event) =>
                   onSettingChange("essentialExpenseTarget", Number(event.target.value))
                 }
@@ -2479,7 +2542,7 @@ function AssumptionsPanel({ settings }: { settings: ModelSettings }) {
             <li>Projection starts {formatMonthLabel(settings.timelineStartMonth)} and spans {projectionLength(settings.projectionMonths)} months.</li>
             <li>Civilian work begins {formatDateLabel(settings.workStartDate)}{settings.workType === "contract" ? ` and ends ${formatDateLabel(settings.contractEndDate)}` : ""}. Partial months use actual calendar days, not a fixed half-month assumption.</li>
             <li>Separation status is user-entered: {settings.alreadySeparated ? "already separated" : formatDateLabel(settings.separationDate)}.</li>
-            <li>School/training period is user-entered: {formatDateLabel(settings.schoolStartDate)} through {formatDateLabel(settings.schoolEndDate)}.</li>
+            <li>{settings.schoolLoad === "none" ? "School/training is not included in this projection." : <>School/training period is user-entered: {formatDateLabel(settings.schoolStartDate)} through {formatDateLabel(settings.schoolEndDate)}.</>}</li>
             <li>Inputs are stored locally in this browser unless a future feature explicitly states otherwise.</li>
             <li>VA, education benefit, Pell, tax, and UCX figures are planning estimates, not eligibility decisions.</li>
           </ul>
@@ -3108,6 +3171,7 @@ function buildTimelineRows(settings: ModelSettings, series: MonthModel[]) {
     {
       label: "School / education aid / Pell",
       cells: series.map((month) => {
+        if (settings.schoolLoad === "none" && settings.pellEnrollment === "none") return { monthId: month.id, kind: "empty", label: "" };
         if (!isSchoolMonth(month.id, settings) && month.streams.education <= 0 && month.streams.pell <= 0) {
           return { monthId: month.id, kind: "empty", label: "" };
         }
