@@ -22,14 +22,14 @@ export const VA_DISABILITY_RATE_DATASET: BenefitRateDataset & {
   rates: Record<VaRating, number>;
 } = {
   program: "VA Disability",
-  label: "Veteran-only disability compensation",
+  label: "Disability compensation and dependent additions",
   effectiveFrom: "2025-12-01",
-  verifiedAt: INFORMATION_REVIEWED_AT,
+  verifiedAt: "2026-09-28",
   sourceUpdatedAt: "2025-12-02",
   sourceLabel: "VA.gov disability compensation rates",
   sourceUrl: "https://www.va.gov/disability/compensation-rates/veteran-rates/",
   status: "verified",
-  note: "Veteran-only monthly planning rates before dependents or other SMC awards.",
+  note: "Official 2026 base rates plus selected dependent additions from 30%; future years use these rates as planning estimates. Other SMC awards require separate confirmation.",
   rates: {
     0: 0,
     10: 180.42,

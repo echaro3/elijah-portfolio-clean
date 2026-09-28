@@ -9,6 +9,7 @@
   font: 12px/1.6 system-ui, sans-serif;
   border-top: 1px solid #38413c;
 }
+.site-analytics-choice[hidden] { display: none; }
 .site-analytics-choice p { margin: 0; max-width: 760px; }
 .site-analytics-choice button {
   flex-shrink: 0;

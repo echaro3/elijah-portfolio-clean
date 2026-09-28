@@ -87,6 +87,7 @@ export function initializeAnalytics() {
   const button = document.createElement("button");
   button.type = "button";
   const render = () => {
+    section.hidden = readConsent();
     description.textContent = privacySignal()
       ? "Optional analytics are off to respect your browser privacy preference."
       : "Optional Google Analytics measures page visits and button actions using cookies. Planner inputs stay in your browser and are not included in our analytics events.";

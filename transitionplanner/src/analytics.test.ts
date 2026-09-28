@@ -83,14 +83,22 @@ describe("privacy-safe analytics", () => {
     ]);
   });
 
-  it("turns collection off immediately when consent is withdrawn", async () => {
-    const env = environment();
+  it("saves acceptance and dismisses the analytics panel", async () => {
+    const env = environment("www.elijahcharo.com", null);
     const analytics = await import("./analytics");
     analytics.initializeAnalytics();
     const button = env.elements.find(element => element.tag === "button")!;
+    const section = env.elements.find(element => element.tag === "section")!;
+    expect(section.hidden).toBe(false);
     button.addEventListener.mock.calls[0][1]();
-    analytics.trackAction("contact_click");
-    expect(env.commands().filter(args => args[0] === "event")).toEqual([]);
-    expect(env.windowMock.location.reload).toHaveBeenCalledOnce();
+    expect(localStorage.getItem("site-analytics-consent-v1")).toBe("granted");
+    expect(section.hidden).toBe(true);
+    expect(env.commands().filter(args => args[0] === "config")).toHaveLength(1);
+  });
+
+  it("keeps the panel hidden on a returning visit after acceptance", async () => {
+    const env = environment();
+    (await import("./analytics")).initializeAnalytics();
+    expect(env.elements.find(element => element.tag === "section")!.hidden).toBe(true);
   });
 });

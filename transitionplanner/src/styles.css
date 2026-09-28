@@ -92,7 +92,8 @@ label > span, .select-field-label, .segmented-label { font-size: 11px; line-heig
 .field-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .field-pair > label, .field-pair > .select-field { min-width: 0; }
 .field-pair > label { grid-template-rows: 1fr auto; }
-input[type="number"], input[type="date"], input[type="month"], select, .themed-select-trigger { width: 100%; min-width: 0; min-inline-size: 0; max-width: 100%; min-height: 40px; border: 1px solid #424a45; border-radius: 5px; padding: 8px 10px; background: #151917; font-size: 13px; line-height: 1.4; color-scheme: dark; }
+input[type="number"], input[type="date"], input[type="month"], .currency-input input, select, .themed-select-trigger { width: 100%; min-width: 0; min-inline-size: 0; max-width: 100%; min-height: 40px; border: 1px solid #424a45; border-radius: 5px; padding: 8px 10px; background: #151917; font-size: 13px; line-height: 1.4; color-scheme: dark; }
+.currency-input input { padding-left: 28px; }
 input[type="date"], input[type="month"] { padding-inline: 7px; }
 input::-webkit-datetime-edit { min-width: 0; padding: 0; }
 input::-webkit-calendar-picker-indicator { margin: 0; width: 14px; padding: 0; opacity: .7; }
@@ -329,7 +330,7 @@ li + li { margin-top: 8px; }
   .control-grid { gap: 30px; }
   fieldset + fieldset { border-top: 1px solid var(--line); padding-top: 20px; }
   legend { padding-top: 10px; }
-  input[type="number"], input[type="date"], input[type="month"], .themed-select-trigger { font-size: 16px; min-height: 44px; }
+  input[type="number"], input[type="date"], input[type="month"], .currency-input input, .themed-select-trigger { font-size: 16px; min-height: 44px; }
   .segmented-control button { min-height: 38px; }
   .hologram-section > .section-heading { align-items: flex-start; flex-direction: column; }
   .analysis-mode-toggle { width: 100%; }

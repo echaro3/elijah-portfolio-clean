@@ -1,6 +1,10 @@
 import * as React from "react";
 import { trackAction, trackPlannerStarted } from "./analytics";
 import GuidedSetup from "./GuidedSetup";
+import SelectControl from "./SelectControl";
+import VaDependentInputs from "./VaDependentInputs";
+import { NO_VA_DEPENDENTS, normalizeVaDependents, vaCompensation, type VaDependents } from "./data/vaDependents";
+import CurrencyInput from "./CurrencyInput";
 import { SETUP_KEY, emptyAnswers, loadSetup, setupInsights, type SetupState } from "./setupModel";
 import {
   AlertTriangle,
@@ -22,6 +26,7 @@ import {
   ArrowUpRight,
   Box,
   Printer,
+  MessageCircleQuestion,
 } from "lucide-react";
 import {
   BENEFIT_RATE_DATASETS,
@@ -93,6 +98,7 @@ export type ModelSettings = {
   pellDisbursementMonth: MonthId;
   activeDutyMonthly: number;
   rating: Rating;
+  vaDependents: VaDependents;
   smcK: boolean;
   vaStart: VaStart;
   workType: WorkType;
@@ -247,6 +253,7 @@ const BASE_SETTINGS: ModelSettings = {
   pellDisbursementMonth: toMonthId(DEFAULT_SCHOOL_START_DATE),
   activeDutyMonthly: DEFAULT_ACTIVE_DUTY_MONTHLY,
   rating: 70,
+  vaDependents: NO_VA_DEPENDENTS,
   smcK: false,
   vaStart: addMonths(toMonthId(DEFAULT_SEPARATION_DATE), 3),
   workType: "contract",
@@ -597,6 +604,7 @@ function normalizePlannerState(value: unknown): PlannerState | null {
         20000,
       ),
       rating: isRating(savedSettings.rating) ? savedSettings.rating : baseSettings.rating,
+      vaDependents: normalizeVaDependents(savedSettings.vaDependents),
       smcK: typeof savedSettings.smcK === "boolean" ? savedSettings.smcK : baseSettings.smcK,
       vaStart: isVaStart(savedSettings.vaStart) ? savedSettings.vaStart : baseSettings.vaStart,
       workType: isWorkType(savedSettings.workType) ? savedSettings.workType : baseSettings.workType,
@@ -918,17 +926,6 @@ function AnimatedNumber({
   );
 }
 
-type SelectOption<T extends string | number> = {
-  value: T;
-  label: string;
-};
-
-type SelectControlProps<T extends string | number> = {
-  label: string;
-  value: T;
-  options: SelectOption<T>[];
-  onChange: (value: T) => void;
-};
 
 function MonthControl({ label, value, onChange, optionalLabel, defaultMonth, invalid }: {
   label: string; value: string; onChange: (value: string) => void;
@@ -943,154 +940,11 @@ function MonthControl({ label, value, onChange, optionalLabel, defaultMonth, inv
   </div>;
 }
 
-function SelectControl<T extends string | number>({
-  label,
-  value,
-  options,
-  onChange,
-}: SelectControlProps<T>) {
-  const fieldId = React.useId();
-  const rootRef = React.useRef<HTMLDivElement | null>(null);
-  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
-  const [isOpen, setIsOpen] = React.useState(false);
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => Object.is(option.value, value)),
-  );
-  const [activeIndex, setActiveIndex] = React.useState(selectedIndex);
-  const selectedOption = options[selectedIndex] ?? options[0];
-
-  React.useEffect(() => {
-    if (isOpen) {
-      setActiveIndex(selectedIndex);
-    }
-  }, [isOpen, selectedIndex]);
-
-  React.useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [isOpen]);
-
-  const chooseOption = (nextIndex: number) => {
-    const nextOption = options[nextIndex];
-
-    if (!nextOption) {
-      return;
-    }
-
-    onChange(nextOption.value);
-    setIsOpen(false);
-    buttonRef.current?.focus();
-  };
-
-  const moveActiveOption = (direction: number) => {
-    setActiveIndex((current) => (current + direction + options.length) % options.length);
-  };
-
-  return (
-    <div className={`select-field${isOpen ? " is-open" : ""}`} ref={rootRef}>
-      <span className="select-field-label" id={`${fieldId}-label`}>
-        {label}
-      </span>
-      <button
-        aria-controls={`${fieldId}-listbox`}
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
-        aria-labelledby={`${fieldId}-label ${fieldId}-value`}
-        className="themed-select-trigger"
-        onClick={() => setIsOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            if (!isOpen) {
-              setIsOpen(true);
-              setActiveIndex(selectedIndex);
-              return;
-            }
-            moveActiveOption(1);
-          }
-
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            if (!isOpen) {
-              setIsOpen(true);
-              setActiveIndex(selectedIndex);
-              return;
-            }
-            moveActiveOption(-1);
-          }
-
-          if (event.key === "Home" && isOpen) {
-            event.preventDefault();
-            setActiveIndex(0);
-          }
-
-          if (event.key === "End" && isOpen) {
-            event.preventDefault();
-            setActiveIndex(options.length - 1);
-          }
-
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            if (isOpen) {
-              chooseOption(activeIndex);
-              return;
-            }
-            setIsOpen(true);
-          }
-
-          if (event.key === "Escape" && isOpen) {
-            event.preventDefault();
-            setIsOpen(false);
-          }
-        }}
-        ref={buttonRef}
-        type="button"
-      >
-        <span id={`${fieldId}-value`}>{selectedOption?.label}</span>
-        <span className="themed-select-arrow" aria-hidden="true" />
-      </button>
-      {isOpen ? (
-        <div className="themed-select-list" id={`${fieldId}-listbox`} role="listbox">
-          {options.map((option, index) => (
-            <button
-              aria-selected={Object.is(option.value, value)}
-              className={index === activeIndex ? "is-active" : ""}
-              id={`${fieldId}-option-${index}`}
-              key={String(option.value)}
-              onClick={() => chooseOption(index)}
-              onMouseEnter={() => setActiveIndex(index)}
-              role="option"
-              type="button"
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function App() {
   const [setup, setSetup] = React.useState<SetupState | null>(() => {
     const saved = loadSetup();
     if (saved) return saved;
-    try {
-      const raw = window.localStorage.getItem(PLANNER_STORAGE_KEY);
-      if (raw && normalizePlannerState(JSON.parse(raw))) return null;
-    } catch { /* Start without storage or with an invalid saved plan. */ }
     return { answers: emptyAnswers(), step: 0, complete: false, pending: [] };
   });
   const [showSetup, setShowSetup] = React.useState(() => !!setup && !setup.complete);
@@ -1160,6 +1014,7 @@ function App() {
         pellDisbursementMonth: current.settings.pellDisbursementMonth,
         activeDutyMonthly: current.settings.activeDutyMonthly,
         rating: current.settings.rating,
+        vaDependents: current.settings.vaDependents,
         smcK: current.settings.smcK,
         payMode: current.settings.payMode,
         hourlyRate: current.settings.hourlyRate,
@@ -1216,11 +1071,18 @@ function App() {
     }
   };
 
+  const startGuidedSetup = () => {
+    previousSetup.current = setup;
+    setSetup({ answers: emptyAnswers(), step: 0, complete: false, pending: [] });
+    setShowSetup(true);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+
   if (showSetup && setup) return <main className="planner-shell">
     <nav className="app-bar" aria-label="Planner navigation"><a className="app-brand" href="#"><BarChart3 aria-hidden="true" /> Transition planner</a></nav>
     <header className="setup-intro"><p className="eyebrow">Veteran transition planner</p><h1>Let's start with what you know.</h1><p>A few questions about your transition. No need to have it all figured out.</p></header>
     <GuidedSetup state={setup} base={BASE_SETTINGS} onChange={setSetup}
-      onCancel={previousSetup.current?.complete || previousSetup.current === null ? () => { setSetup(previousSetup.current); setShowSetup(false); } : undefined}
+      onCancel={previousSetup.current?.complete ? () => { setSetup(previousSetup.current); setShowSetup(false); } : undefined}
       onFinish={(completed, nextSettings) => {
         setPlannerState({ scenarioId: nextSettings.workType === "none" ? "schoolFirst" : "fullTime", settings: nextSettings });
         setSetup(completed); setShowSetup(false); trackPlannerStarted();
@@ -1246,10 +1108,7 @@ function App() {
         <button type="button" className="icon-button" onClick={printPlan} disabled={!forecastReady} title="Print or save plan" aria-label="Print or save plan"><Printer /></button>
       </nav>
       {forecastReady ? <Header summary={summary} settings={settings} /> : <header className="planner-header static-header"><PlannerIntroduction /></header>}
-      <button type="button" className="setup-skip setup-launch" onClick={() => {
-        previousSetup.current = setup;
-        setSetup({ answers: emptyAnswers(), step: 0, complete: false, pending: [] }); setShowSetup(true);
-      }}>Start a guided setup</button>
+      <button type="button" className="setup-skip setup-launch" onClick={startGuidedSetup}>Start a guided setup</button>
       {setup?.complete && <details className="setup-followup" open={!forecastReady} id="setup-outcome" tabIndex={-1}>
         <summary>{forecastReady ? "Your starting assumptions and next steps" : "A few details before a reliable forecast"}</summary>
         <p>{forecastReady ? "This projection uses the inputs below, not a benefit eligibility decision." : "Your answers are saved. Add separation timing and essential expenses below to unlock the financial visuals."}</p>
@@ -1331,6 +1190,7 @@ function App() {
         settings={settings}
         workPreview={workPreview}
         onSettingChange={updateSetting}
+        onStartSetup={startGuidedSetup}
         pending={pending}
       />
 
@@ -1430,13 +1290,14 @@ function MetricCard({ icon, label, value, detail }: MetricCardProps) {
 }
 
 type ControlPanelProps = {
+  onStartSetup: () => void;
   pending?: Array<keyof ModelSettings>;
   settings: ModelSettings;
   workPreview: ReturnType<typeof getWorkPreview>;
   onSettingChange: <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => void;
 };
 
-function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: ControlPanelProps) {
+function ControlPanel({ settings, workPreview, onSettingChange, onStartSetup, pending = [] }: ControlPanelProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const controlGridId = React.useId();
   const vaMonthly = getVaMonthly(settings);
@@ -1468,6 +1329,11 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           <p className="eyebrow">Model inputs</p>
           <h2 id="controls-heading">Stress-test the assumptions</h2>
         </div>
+        <div className="control-heading-actions">
+        <button className="setup-next" type="button" onClick={onStartSetup}>
+          <MessageCircleQuestion size={16} aria-hidden="true" />
+          Answer setup questions
+        </button>
         <button
           className="section-toggle"
           type="button"
@@ -1478,6 +1344,7 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           <span>{isExpanded ? "Hide inputs" : "Show inputs"}</span>
           <ChevronDown aria-hidden="true" />
         </button>
+        </div>
       </div>
 
       <div className="control-summary-strip" aria-label="Current model inputs">
@@ -1556,12 +1423,11 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           </div>
             <label>
               <span>Active-duty take-home/mo</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={settings.activeDutyMonthly}
-                onChange={(event) => onSettingChange("activeDutyMonthly", Number(event.target.value))}
+                onValueChange={(value) => onSettingChange("activeDutyMonthly", Number(value))}
               />
             </label>
           <p className="field-note">
@@ -1581,6 +1447,7 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
             options={RATING_OPTIONS}
             onChange={(value) => onSettingChange("rating", value)}
           />
+          {settings.rating >= 30 ? <VaDependentInputs value={settings.vaDependents} onChange={value => onSettingChange("vaDependents", value)} /> : <p className="field-note">Dependent additions begin at a 30% rating.</p>}
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -1623,7 +1490,7 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
             </small>
           </div>
           <p className="field-note">
-            Uses 2026 veteran-only rates; dependent additions are not included. Assumes an award
+            Uses official 2026 rates with selected dependent additions, verified September 28, 2026. Assumes an award
             effective the day after separation, with payment eligibility beginning the following month.
             A decision late in a month can move the deposit into the next month.
           </p>
@@ -1676,23 +1543,21 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           </div>
           <label>
             <span>Term tuition / out-of-pocket reserve</span>
-            <input
-              type="number"
+<CurrencyInput
               min={0}
               step={50}
               value={settings.schoolTuition}
-              onChange={(event) => onSettingChange("schoolTuition", Number(event.target.value))}
+              onValueChange={(value) => onSettingChange("schoolTuition", Number(value))}
             />
           </label>
           <label>
             <span>{getEducationRateInputLabel(settings.educationBenefit)}</span>
-            <input
-              type="number"
+<CurrencyInput
               min={0}
               step={25}
               disabled={settings.educationBenefit === "none" || (settings.educationBenefit === "mgib" && settings.educationRateBasis !== "manual")}
               value={settings.educationBenefit === "mgib" && settings.educationRateBasis !== "manual" ? educationMonthly : settings.educationMonthlyRate}
-              onChange={(event) => onSettingChange("educationMonthlyRate", Number(event.target.value))}
+              onValueChange={(value) => onSettingChange("educationMonthlyRate", Number(value))}
             />
           </label>
           {settings.educationBenefit === "mgib" ? <SelectControl
@@ -1806,12 +1671,11 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
             <div className="field-pair compact-number-pair">
               <label>
                 <span>Hourly wage</span>
-                <input
-                  type="number"
+<CurrencyInput
                   min={0}
                   step={1}
                   value={settings.hourlyRate}
-                  onChange={(event) => onSettingChange("hourlyRate", Number(event.target.value))}
+                  onValueChange={(value) => onSettingChange("hourlyRate", Number(value))}
                 />
               </label>
               <label>
@@ -1834,12 +1698,11 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           ) : (
             <label>
               <span>Yearly wage / salary</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={1000}
                 value={settings.annualSalary}
-                onChange={(event) => onSettingChange("annualSalary", Number(event.target.value))}
+                onValueChange={(value) => onSettingChange("annualSalary", Number(value))}
               />
             </label>
           )}
@@ -1874,37 +1737,34 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           {settings.useManualTakeHome ? (
             <label>
               <span>Expected monthly take-home</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={settings.manualMonthlyTakeHome}
-                onChange={(event) => onSettingChange("manualMonthlyTakeHome", Number(event.target.value))}
+                onValueChange={(value) => onSettingChange("manualMonthlyTakeHome", Number(value))}
               />
             </label>
           ) : null}
           <div className="field-pair">
             <label>
               <span>Pre-tax deductions/mo</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={25}
                 value={settings.pretaxMonthlyDeductions}
-                onChange={(event) =>
-                  onSettingChange("pretaxMonthlyDeductions", Number(event.target.value))
+                onValueChange={(value) =>
+                  onSettingChange("pretaxMonthlyDeductions", Number(value))
                 }
               />
             </label>
             <label>
               <span>After-tax deductions/mo</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={25}
                 value={settings.posttaxMonthlyDeductions}
-                onChange={(event) =>
-                  onSettingChange("posttaxMonthlyDeductions", Number(event.target.value))
+                onValueChange={(value) =>
+                  onSettingChange("posttaxMonthlyDeductions", Number(value))
                 }
               />
             </label>
@@ -1978,24 +1838,22 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           <div className="field-pair">
             <label>
               <span>UCX weekly amount</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 max={UCX_INPUT_LIMIT}
                 step={5}
                 value={settings.ucxWeeklyBenefit}
-                onChange={(event) => onSettingChange("ucxWeeklyBenefit", Number(event.target.value))}
+                onValueChange={(value) => onSettingChange("ucxWeeklyBenefit", Number(value))}
               />
             </label>
             <label>
               <span>Essential expenses/mo</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={pending.includes("essentialExpenseTarget") ? "" : settings.essentialExpenseTarget}
-                onChange={(event) =>
-                  onSettingChange("essentialExpenseTarget", Number(event.target.value))
+                onValueChange={(value) =>
+                  onSettingChange("essentialExpenseTarget", Number(value))
                 }
               />
             </label>
@@ -2003,25 +1861,23 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           <div className="field-pair">
             <label>
               <span>Normal lifestyle/mo</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={settings.normalLifestyleTarget}
-                onChange={(event) =>
-                  onSettingChange("normalLifestyleTarget", Number(event.target.value))
+                onValueChange={(value) =>
+                  onSettingChange("normalLifestyleTarget", Number(value))
                 }
               />
             </label>
             <label>
               <span>Ideal / savings target</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={settings.idealSavingsTarget}
-                onChange={(event) =>
-                  onSettingChange("idealSavingsTarget", Number(event.target.value))
+                onValueChange={(value) =>
+                  onSettingChange("idealSavingsTarget", Number(value))
                 }
               />
             </label>
@@ -2029,24 +1885,22 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           <div className="field-pair">
             <label>
               <span>Separation-month military pay</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={settings.separationMonthMilitaryPay}
-                onChange={(event) =>
-                  onSettingChange("separationMonthMilitaryPay", Number(event.target.value))
+                onValueChange={(value) =>
+                  onSettingChange("separationMonthMilitaryPay", Number(value))
                 }
               />
             </label>
             <label>
               <span>Final military pay</span>
-              <input
-                type="number"
+<CurrencyInput
                 min={0}
                 step={50}
                 value={Math.round(settings.finalMilitaryPay)}
-                onChange={(event) => onSettingChange("finalMilitaryPay", Number(event.target.value))}
+                onValueChange={(value) => onSettingChange("finalMilitaryPay", Number(value))}
               />
             </label>
           </div>
@@ -2060,13 +1914,12 @@ function ControlPanel({ settings, workPreview, onSettingChange, pending = [] }: 
           />
           <label>
             <span>Known military-pay deductions across next 2 checks</span>
-            <input
-              type="number"
+<CurrencyInput
               min={0}
               step={50}
               value={settings.militaryPayDeductionTotal}
-              onChange={(event) =>
-                onSettingChange("militaryPayDeductionTotal", Number(event.target.value))
+              onValueChange={(value) =>
+                onSettingChange("militaryPayDeductionTotal", Number(value))
               }
             />
           </label>
@@ -2824,7 +2677,7 @@ export function SourcePanel({ showRefreshTimestamp = true }: { showRefreshTimest
         </p>
         <p className="review-stamp">Information verified <time dateTime={INFORMATION_REVIEWED_AT}>{INFORMATION_REVIEWED_LABEL}</time>.</p>
         {showRefreshTimestamp ? <RefreshTimestamp /> : null}
-        <p>2026 federal income-tax tables and the $184,500 Social Security wage base were checked against IRS and SSA publications. Future tax years use these as estimates. State taxes, dependent VA additions, and individual eligibility require your own confirmed inputs.</p>
+        <p>2026 federal income-tax tables and the $184,500 Social Security wage base were checked against IRS and SSA publications. Future tax years use these as estimates. VA dependent rates were verified September 28, 2026. State taxes and individual eligibility require your own confirmed inputs.</p>
       </div>
       <div className="source-stack">
         <div className="rate-source-grid">
@@ -3069,6 +2922,7 @@ function buildScenarioRows(baseSettings: ModelSettings): ScenarioRow[] {
       pellDisbursementMonth: baseSettings.pellDisbursementMonth,
       activeDutyMonthly: baseSettings.activeDutyMonthly,
       rating: baseSettings.rating,
+      vaDependents: baseSettings.vaDependents,
       smcK: baseSettings.smcK,
       payMode: baseSettings.payMode,
       hourlyRate: baseSettings.hourlyRate,
@@ -3322,8 +3176,8 @@ function getVaBackpay(monthId: MonthId, settings: ModelSettings) {
   return getAccruedVaMonths(settings) * getVaMonthly(settings);
 }
 
-function getVaMonthly(settings: Pick<ModelSettings, "rating" | "smcK">) {
-  return VA_RATES[settings.rating] + (settings.smcK ? SMC_K_RATE : 0);
+function getVaMonthly(settings: Pick<ModelSettings, "rating" | "smcK"> & Partial<Pick<ModelSettings, "vaDependents">>) {
+  return Math.round((vaCompensation(settings.rating, settings.vaDependents) + (settings.smcK ? SMC_K_RATE : 0)) * 100) / 100;
 }
 
 function getEducationBenefitPay(monthId: MonthId, settings: ModelSettings) {

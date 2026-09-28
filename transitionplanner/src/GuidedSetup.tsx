@@ -1,8 +1,13 @@
 import * as React from "react";
 import { ArrowLeft, ArrowRight, Check, CalendarDays, BriefcaseBusiness, ShieldCheck, GraduationCap, WalletCards, ClipboardCheck } from "lucide-react";
-import { amount, buildSetup, setupError, setupInsights, type Answers, type AnswerKey, type SetupState } from "./setupModel";
+import { amount, buildSetup, setupError, setupInsights, setupVaDependents, type Answers, type AnswerKey, type SetupState } from "./setupModel";
+import SelectControl from "./SelectControl";
+import VaDependentInputs from "./VaDependentInputs";
+import { vaCompensation } from "./data/vaDependents";
+import { type VaRating } from "./data/benefitRates";
 import type { ModelSettings } from "./App";
 import "./guidedSetup.css";
+import CurrencyInput from "./CurrencyInput";
 
 const steps = [
   { title: "When does your next chapter begin?", label: "Your timeline", icon: CalendarDays, detail: "A rough date is fine. Anything you leave blank stays unconfirmed." },
@@ -12,6 +17,8 @@ const steps = [
   { title: "What does a basic month cost?", label: "Everyday costs", icon: WalletCards, detail: "Think housing, groceries, transport, healthcare and minimum debt payments. Leave savings goals for later." },
   { title: "Here's where your plan stands.", label: "Your starting point", icon: ClipboardCheck, detail: "Unconfirmed income stays out. You can adjust every assumption afterward." },
 ];
+
+const currencyAnswers = new Set<AnswerKey>(["military", "pay", "education", "tuition", "expenses"]);
 
 export default function GuidedSetup({ state, onChange, onFinish, onCancel, base }: {
   state: SetupState; onChange: (state: SetupState) => void;
@@ -23,9 +30,9 @@ export default function GuidedSetup({ state, onChange, onFinish, onCancel, base 
   React.useEffect(() => { heading.current?.focus({ preventScroll: true }); setError(null); }, [step]);
   const update = (key: AnswerKey, value: string) => { setError(null); onChange({ ...state, answers: { ...a, [key]: value } }); };
   const input = (key: AnswerKey, label: string, type = "number", max?: number) => <label className="setup-field" key={key}>
-    <span>{label}</span><input type={type} value={a[key]} onChange={event => update(key, event.target.value)}
+    <span>{label}</span>{currencyAnswers.has(key) ? <CurrencyInput value={a[key]} onValueChange={value => update(key, value)} /> : <input type={type} value={a[key]} onChange={event => update(key, event.target.value)}
       min={type === "number" ? 0 : undefined} max={max} step={key === "rating" ? 10 : type === "number" ? "any" : undefined}
-      inputMode={type === "number" ? "decimal" : undefined} autoComplete="off" /></label>;
+      inputMode={type === "number" ? "decimal" : undefined} autoComplete="off" />}</label>;
   const choice = (key: AnswerKey, label: string, options: Array<[string, string]>) => <fieldset className="setup-options"><legend>{label}</legend>
     {options.map(([value, text]) => <label key={value}><input type="radio" name={key} value={value} checked={a[key] === value} onChange={() => update(key, value)} /><span>{text}</span></label>)}</fieldset>;
   const advance = () => {
@@ -39,7 +46,7 @@ export default function GuidedSetup({ state, onChange, onFinish, onCancel, base 
     }
   };
   const skip = () => {
-    const keys: AnswerKey[][] = [["start", "separation", "leave", "military"], ["work", "workStart", "pay", "hours"], ["va", "rating", "vaMonth"], ["school", "schoolStart", "schoolEnd", "benefit", "load", "education", "tuition"], ["expenses"]];
+    const keys: AnswerKey[][] = [["start", "separation", "leave", "military"], ["work", "workStart", "pay", "hours"], ["va", "rating", "vaMonth", "vaSpouse", "vaParents", "vaChildren", "vaStudents", "vaSpouseAid"], ["school", "schoolStart", "schoolEnd", "benefit", "load", "education", "tuition"], ["expenses"]];
     const answers = { ...a };
     for (const key of keys[step]) answers[key] = "";
     onChange({ ...state, answers, step: step + 1 });
@@ -53,13 +60,18 @@ export default function GuidedSetup({ state, onChange, onFinish, onCancel, base 
     <div className="setup-panel" key={step}>
       <h2 id="setup-heading" tabIndex={-1} ref={heading}>{current.title}</h2><p className="setup-description">{current.detail}</p>
       <form onSubmit={event => { event.preventDefault(); advance(); }} noValidate>
-        {step === 0 && <><div className="setup-fields">{input("start", "Projection begins", "month")}{input("separation", "Separation date", "date")}{input("leave", "Terminal leave starts (optional)", "date")}{input("military", "Current military take-home / month", "number", 100000)}</div><p className="setup-note">No projection month selected? The timeline will start this month. Separation and pay stay unconfirmed until you provide them.</p></>}
+        {step === 0 && <><div className="setup-fields">{input("start", "Projection begins", "month")}{input("separation", "Separation date", "date")}{input("leave", "Terminal leave starts (optional)", "date")}{input("military", "Current military take-home / month")}</div><p className="setup-note">No projection month selected? The timeline will start this month. Separation and pay stay unconfirmed until you provide them.</p></>}
         {step === 1 && <>{choice("work", "Civilian employment", [["yes", "Yes, or exploring it"], ["no", "No civilian work planned"], ["unknown", "I'm not sure yet"]])}{a.work === "yes" && <>
           {choice("payMode", "How do you think about pay?", [["hourly", "Hourly wage"], ["annual", "Yearly salary"]])}
           <div className="setup-fields">{input("pay", a.payMode === "annual" ? "Gross yearly salary" : "Hourly wage")}{a.payMode !== "annual" && input("hours", "Hours per week", "number", 168)}{input("workStart", "Work starts", "date")}</div>
           {choice("filing", "Tax filing status", [["single", "Single"], ["marriedJoint", "Married filing jointly"], ["headOfHousehold", "Head of household"]])}
           <p className="setup-note">This estimate assumes W-2 employment and single filing unless selected otherwise. Work before separation must begin on or after terminal leave starts; military duties and outside-employment rules still apply.</p></>}</>}
-        {step === 2 && <>{choice("va", "VA compensation", [["yes", "Include an estimate"], ["no", "Don't include VA income"], ["unknown", "I'm waiting to find out"]])}{a.va === "yes" && <div className="setup-fields">{input("rating", "Expected or awarded rating (%)", "number", 100)}{input("vaMonth", "Expected decision month", "month")}</div>}<p className="setup-note">No rating or decision month? VA income stays excluded. Regular payments are modeled after the decision month and first payable month. Catch-up payments and SMC are not assumed.</p></>}
+        {step === 2 && <>{choice("va", "VA compensation", [["yes", "Include an estimate"], ["no", "Don't include VA income"], ["unknown", "I'm waiting to find out"]])}{a.va === "yes" && <>
+          <div className="setup-fields"><SelectControl label="Expected or awarded VA rating" value={a.rating} options={[{ value: "", label: "Not yet known" }, ...Array.from({ length: 11 }, (_, i) => ({ value: String(i * 10), label: `${i * 10}%` }))]} onChange={value => update("rating", value)} />{input("vaMonth", "Expected decision month", "month")}</div>
+          {Number(a.rating) >= 30 && <VaDependentInputs value={setupVaDependents(a)} onChange={d => onChange({ ...state, answers: { ...a, vaSpouse: d.spouse ? "yes" : "no", vaParents: String(d.parents), vaChildren: String(d.children), vaStudents: String(d.students), vaSpouseAid: d.spouseAid ? "yes" : "no" } })} />}
+          {a.rating !== "" && Number(a.rating) % 10 === 0 && Number(a.rating) <= 100 && <p className="setup-note"><strong>{vaCompensation(Number(a.rating) as VaRating, setupVaDependents(a)).toLocaleString("en-US", { style: "currency", currency: "USD" })}/month</strong> at 2026 rates. Dependent additions apply from 30%.</p>}
+          <p className="setup-note"><a href="https://www.va.gov/disability/compensation-rates/veteran-rates/" target="_blank" rel="noreferrer">Official 2026 VA rates</a>, effective December 1, 2025. Verified September 28, 2026. Future years use these rates as estimates.</p>
+        </>}<p className="setup-note">No rating or decision month? VA income stays excluded. Regular payments are modeled after the decision month and first payable month. Catch-up payments and SMC are not assumed.</p></>}
         {step === 3 && <>{choice("school", "School or training", [["yes", "Yes, planned or already enrolled"], ["no", "Not part of my plan"], ["unknown", "Still deciding"]])}{a.school === "yes" && <>
           {choice("benefit", "Which education benefit?", [["mgib", "Montgomery GI Bill"], ["post911", "Post-9/11 GI Bill"], ["vre", "VR&E"], ["none", "None / not sure"]])}
           {choice("load", "Enrollment", [["full", "Full-time"], ["threeQuarter", "Three-quarter time"], ["half", "Half-time"], ["none", "Not sure"]])}

@@ -1,14 +1,16 @@
 import type { ModelSettings } from "./App";
 import { isCalendarDate, isCalendarMonth } from "./planningDates";
+import { normalizeVaDependents, NO_VA_DEPENDENTS } from "./data/vaDependents";
 
 export const SETUP_KEY = "veteran-transition-planner:setup:v1";
-export const answerKeys = ["start", "separation", "leave", "military", "work", "workStart", "payMode", "pay", "hours", "filing", "va", "rating", "vaMonth", "school", "schoolStart", "schoolEnd", "benefit", "load", "education", "tuition", "expenses"] as const;
+export const answerKeys = ["start", "separation", "leave", "military", "work", "workStart", "payMode", "pay", "hours", "filing", "va", "rating", "vaMonth", "vaSpouse", "vaParents", "vaChildren", "vaStudents", "vaSpouseAid", "school", "schoolStart", "schoolEnd", "benefit", "load", "education", "tuition", "expenses"] as const;
 export type AnswerKey = typeof answerKeys[number];
 export type Answers = Record<AnswerKey, string>;
 export type SetupState = { answers: Answers; step: number; complete: boolean; pending: Array<keyof ModelSettings> };
 const pendingFields = ["separationDate", "essentialExpenseTarget", "terminalLeaveStartDate", "schoolStartDate", "schoolEndDate", "workStartDate"];
 export const emptyAnswers = (): Answers => Object.fromEntries(answerKeys.map(key => [key, ""])) as Answers;
 export const amount = (value: string) => value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
+export const setupVaDependents = (a: Answers) => normalizeVaDependents({ spouse: a.vaSpouse === "yes", parents: Number(a.vaParents), children: Number(a.vaChildren), students: Number(a.vaStudents), spouseAid: a.vaSpouseAid === "yes" });
 
 export function loadSetup(): SetupState | null {
   try {
@@ -82,6 +84,7 @@ export function buildSetup(a: Answers, base: ModelSettings, today = new Date()) 
     filingStatus: a.filing === "marriedJoint" || a.filing === "headOfHousehold" ? a.filing : "single",
     useManualTakeHome: false, manualMonthlyTakeHome: 0, pretaxMonthlyDeductions: 0, posttaxMonthlyDeductions: 0, extraTaxReservePercent: 0,
     rating: (vaReady ? Number(a.rating) : 0) as ModelSettings["rating"], vaStart: vaReady ? a.vaMonth : "none",
+    vaDependents: a.va === "yes" ? setupVaDependents(a) : { ...NO_VA_DEPENDENTS },
     smcK: false, includeVaBackpay: false, ucxMode: "off", ucxWeeklyBenefit: 0,
     schoolStartDate: schoolReady ? a.schoolStart : `${start}-01`, schoolEndDate: schoolReady ? a.schoolEnd : `${start}-01`,
     educationBenefit: schoolReady && load !== "none" && amount(a.education) ? benefit : "none", educationRateBasis: "manual",
